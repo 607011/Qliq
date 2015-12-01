@@ -27,6 +27,8 @@
 
 int main(int argc, char *argv[])
 {
+  checkPortable();
+
   QApplication a(argc, argv);
   a.setOrganizationName(AppCompanyName);
   a.setOrganizationDomain(AppCompanyDomain);
