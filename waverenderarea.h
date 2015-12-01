@@ -43,6 +43,7 @@ protected:
   void resizeEvent(QResizeEvent *);
 
 signals:
+  void click(qint64 nsElapsed);
 
 public slots:
 

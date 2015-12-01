@@ -27,16 +27,23 @@
 #include <QPointF>
 #include <QLineF>
 #include <QMutexLocker>
+#include <QElapsedTimer>
 
 
 class WaveRenderAreaPrivate
 {
 public:
   explicit WaveRenderAreaPrivate(QMutex *mutex)
-    : maxAmplitude(0)
+    : lastClickTime(0)
+    , maxAmplitude(0)
     , sampleBufferMutex(mutex)
-  { /* ... */ }
+  {
+    timer.start();
+  }
   ~WaveRenderAreaPrivate() { /* ... */ }
+  QElapsedTimer timer;
+  qint64 lastClickTime;
+  qint64 dt0;
   QByteArray sampleBuffer;
   QAudioFormat audioFormat;
   QPixmap pixmap;
@@ -58,6 +65,7 @@ void WaveRenderArea::paintEvent(QPaintEvent *)
 {
   Q_D(WaveRenderArea);
   QPainter p(this);
+  QMutexLocker(d->sampleBufferMutex);
   p.drawPixmap(0, 0, d->pixmap);
 }
 
@@ -65,6 +73,7 @@ void WaveRenderArea::paintEvent(QPaintEvent *)
 void WaveRenderArea::resizeEvent(QResizeEvent *e)
 {
   Q_D(WaveRenderArea);
+  QMutexLocker(d->sampleBufferMutex);
   d->pixmap = QPixmap(e->size());
   drawPixmap();
 }
@@ -79,18 +88,25 @@ void WaveRenderArea::drawPixmap(void)
   p.setRenderHint(QPainter::Antialiasing);
   p.fillRect(d->pixmap.rect(), BackgroundColor);
   if (d->audioFormat.isValid() && d->maxAmplitude > 0 && !d->sampleBuffer.isEmpty()) {
+    qint64 nsPerFrame = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size() / d->audioFormat.bytesPerFrame());
     const int halfHeight = d->pixmap.height() / 2;
     QPointF origin(0, halfHeight);
     QLineF line(origin, origin);
     p.setPen(LinePen);
-    const int numSamples = d->sampleBuffer.size() / d->audioFormat.channelCount();
-    const qreal xd = qreal(d->pixmap.width()) / numSamples * d->audioFormat.sampleSize() / 8;
+    const int numFrames = d->sampleBuffer.size() / d->audioFormat.bytesPerFrame();
+    const qreal xd = qreal(d->pixmap.width()) / numFrames;
     const qint16* buffer = reinterpret_cast<const qint16 *>(d->sampleBuffer.data());
     qreal x = 0;
-    for (int i = 0; i < numSamples; ++i) {
+    for (int i = 0; i < numFrames; ++i) {
       const qint16* ptr = buffer + i * d->audioFormat.channelCount();
-      qreal y = halfHeight + qreal(*ptr) / d->maxAmplitude * halfHeight;
-      line.setP2(QPointF(x, y));
+      const qreal y = qreal(*ptr) / d->maxAmplitude;
+      if (qAbs(y) > 0.5f) { // TODO: improve peak detection
+        qint64 ddt = d->dt0 + nsPerFrame * i;
+        qint64 dt = ddt - d->lastClickTime;
+        d->lastClickTime = ddt;
+        emit click(dt);
+      }
+      line.setP2(QPointF(x, halfHeight + y * halfHeight));
       p.drawLine(line);
       line.setP1(line.p2());
       x += xd;
@@ -103,6 +119,7 @@ void WaveRenderArea::drawPixmap(void)
 void WaveRenderArea::setData(QByteArray data)
 {
   Q_D(WaveRenderArea);
+  d->dt0 = d->timer.nsecsElapsed();
   QMutexLocker(d->sampleBufferMutex);
   d->sampleBuffer = data;
   drawPixmap();

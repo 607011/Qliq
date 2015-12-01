@@ -24,7 +24,6 @@
 #include "audioinputdevice.h"
 
 #include <QDebug>
-#include <QElapsedTimer>
 #include <QBitArray>
 #include <QAudioInput>
 #include <QAudioFormat>
@@ -47,6 +46,7 @@ public:
     , currentByteIndex(0)
     , inverter(false)
     , sampleBufferMutex(new QMutex)
+    , lastDeltaT(0)
   {
     audioFormat.setSampleRate(192000);
     audioFormat.setChannelCount(1);
@@ -59,7 +59,6 @@ public:
   {
     // ...
   }
-  QElapsedTimer t0;
   QAudioDeviceInfo audioDeviceInfo;
   QAudioFormat audioFormat;
   QAudioInput *audio;
@@ -71,6 +70,7 @@ public:
   int currentByteIndex;
   bool inverter;
   QMutex *sampleBufferMutex;
+  qint64 lastDeltaT;
 };
 
 
@@ -87,29 +87,27 @@ MainWindow::MainWindow(QWidget *parent)
     qWarning() << "Default format not supported - trying to use nearest" << d->audioFormat;
   }
 
-  QVBoxLayout *layout = new QVBoxLayout;
   d->volumeRenderArea = new VolumeRenderArea;
-  layout->addWidget(d->volumeRenderArea);
+  ui->layout->addWidget(d->volumeRenderArea);
 
   d->waveRenderArea = new WaveRenderArea(d->sampleBufferMutex);
-  layout->addWidget(d->waveRenderArea);
+  ui->layout->addWidget(d->waveRenderArea);
   d->waveRenderArea->setAudioFormat(d->audioFormat);
+  QObject::connect(d->waveRenderArea, SIGNAL(click(qint64)), SLOT(onClick(qint64)));
 
   d->audioInput  = new AudioInputDevice(d->audioFormat, d->sampleBufferMutex, this);
   QObject::connect(d->audioInput, SIGNAL(update()), SLOT(onRefreshDisplay()));
 
   QSlider *volumeSlider = new QSlider(Qt::Horizontal);
-  QObject::connect(volumeSlider, SIGNAL(valueChanged(int)), SLOT(onVolumeSliderChanged(int)));
   volumeSlider->setRange(0, 100);
-  layout->addWidget(volumeSlider);
+  QObject::connect(volumeSlider, SIGNAL(valueChanged(int)), SLOT(onVolumeSliderChanged(int)));
+  ui->layout->addWidget(volumeSlider);
 
   d->audio = new QAudioInput(d->audioDeviceInfo, d->audioFormat, this);
   volumeSlider->setValue(qRound(100 * d->audio->volume()));
   QObject::connect(d->audio, SIGNAL(stateChanged(QAudio::State)), SLOT(onAudioStateChanged(QAudio::State)));
 
-  layout->addStretch();
-
-  ui->centralWidget->setLayout(layout);
+  ui->layout->addStretch();
 
   ui->statusBar->showMessage(d->audioDeviceInfo.deviceName());
 
@@ -162,13 +160,26 @@ void MainWindow::onVolumeSliderChanged(int value)
 }
 
 
+void MainWindow::onClick(const qint64 dt)
+{
+  Q_D(MainWindow);
+  bool bit = dt > d->lastDeltaT;
+  addBit(bit ^ d->inverter);
+  d->inverter = !d->inverter;
+  d->lastDeltaT = dt;
+}
+
+
 void MainWindow::addBit(bool bit)
 {
   Q_D(MainWindow);
   d->currentByte |= bit << d->currentByteIndex;
   ++d->currentByteIndex;
   if (d->currentByteIndex > 7) {
-    d->currentByteIndex = 0;
+    // ui->statusBar->showMessage(QString("%1").arg(d->currentByte));
+    qDebug() << d->currentByte;
     d->randomBytes.append(d->currentByte);
+    d->currentByte = 0;
+    d->currentByteIndex = 0;
   }
 }
