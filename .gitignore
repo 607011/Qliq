@@ -1,0 +1,15 @@
+*.pro.user*
+.DS_Store
+Makefile*
+Qliq/Makefile*
+Qliq/release/*
+Qliq/debug/*
+Qliq/ui_*.h
+Qliq/doc/*
+Qliq/QtSESAM
+Qliq/qrc_*.cpp
+*.log
+*.o
+moc_*.cpp
+*.qm
+*.moc
