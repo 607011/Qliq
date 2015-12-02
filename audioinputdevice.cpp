@@ -21,6 +21,7 @@
 #include "audioinputdevice.h"
 #include <QDebug>
 #include <QtEndian>
+#include <QFile>
 
 
 class AudioInputDevicePrivate {
@@ -38,6 +39,7 @@ public:
   qreal level;
   QByteArray sampleBuffer;
   QMutex *sampleBufferMutex;
+  QFile audioFile;
 };
 
 
@@ -45,7 +47,17 @@ AudioInputDevice::AudioInputDevice(const QAudioFormat &format, QMutex *mutex, QO
   : QIODevice(parent)
   , d_ptr(new AudioInputDevicePrivate(format, mutex))
 {
-  /* ... */
+  Q_D(AudioInputDevice);
+  d->audioFile.setFileName("D:\\Temp\\mic.raw");
+  d->audioFile.open(QIODevice::WriteOnly | QIODevice::Truncate);
+}
+
+
+AudioInputDevice::~AudioInputDevice()
+{
+  Q_D(AudioInputDevice);
+  d->audioFile.close();
+  stop();
 }
 
 
@@ -98,12 +110,6 @@ quint32 AudioInputDevice::maxAmplitudeForFormat(const QAudioFormat &format)
 }
 
 
-AudioInputDevice::~AudioInputDevice()
-{
-  stop();
-}
-
-
 void AudioInputDevice::start(void)
 {
   open(QIODevice::WriteOnly);
@@ -147,6 +153,9 @@ qint64 AudioInputDevice::writeData(const char *data, qint64 len)
   Q_D(AudioInputDevice);
   d->sampleBufferMutex->lock();
   d->sampleBuffer = QByteArray::fromRawData(data, len);
+  if (d->audioFile.isOpen()) {
+    d->audioFile.write(data, len);
+  }
   d->sampleBufferMutex->unlock();
   if (d->maxAmplitude != 0) {
     Q_ASSERT(d->format.sampleSize() % 8 == 0);

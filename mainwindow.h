@@ -46,7 +46,7 @@ private:
 
 private slots:
   void onAudioStateChanged(QAudio::State);
-  void onRefreshDisplay(void);
+  void refreshDisplay(void);
   void onVolumeSliderChanged(int);
   void onClick(const qint64 dt);
 

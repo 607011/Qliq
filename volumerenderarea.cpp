@@ -48,18 +48,17 @@ void VolumeRenderArea::paintEvent(QPaintEvent *)
 {
   Q_D(VolumeRenderArea);
   QPainter p(this);
-  p.setPen(QColor(0x33, 0x33, 0x33));
-  p.drawRect(QRect(p.viewport().left(),
-                   p.viewport().top(),
-                   p.viewport().right(),
-                   p.viewport().bottom()));
+  static const QColor BorderColor(0x33, 0x33, 0x33);
+  static const QColor FillColor(0xff, 0x66, 0x00);
+  p.setPen(BorderColor);
+  p.drawRect(QRect(p.viewport().left(), p.viewport().top(), p.viewport().right(), p.viewport().bottom()));
   if (d->level > 0.0) {
     const int pos = ((p.viewport().right()) - (p.viewport().left()) - 2) * d->level;
     p.fillRect(p.viewport().left() + 1,
                p.viewport().top() + 1,
                pos,
                p.viewport().height() - 2,
-               QColor(0xff, 0x66, 0x00));
+               FillColor);
   }
 }
 

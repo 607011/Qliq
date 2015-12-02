@@ -22,6 +22,7 @@
 #include "volumerenderarea.h"
 #include "waverenderarea.h"
 #include "audioinputdevice.h"
+#include "wavfile.h"
 
 #include <QDebug>
 #include <QBitArray>
@@ -42,18 +43,27 @@ public:
     , audioInput(Q_NULLPTR)
     , volumeRenderArea(Q_NULLPTR)
     , waveRenderArea(Q_NULLPTR)
+    , volumeSlider(new QSlider(Qt::Horizontal))
     , currentByte(0)
     , currentByteIndex(0)
     , inverter(false)
     , sampleBufferMutex(new QMutex)
     , lastDeltaT(0)
   {
-    audioFormat.setSampleRate(192000);
+    audioFormat.setSampleRate(32000);
     audioFormat.setChannelCount(1);
     audioFormat.setCodec("audio/pcm");
     audioFormat.setSampleSize(16);
-    audioFormat.setByteOrder(QAudioFormat::Endian(QSysInfo::ByteOrder));
+    audioFormat.setByteOrder(QAudioFormat::LittleEndian);
     audioFormat.setSampleType(QAudioFormat::SignedInt);
+    volumeSlider->setTickPosition(QSlider::TicksBelow);
+    volumeSlider->setRange(0, 100);
+
+    WavFile wavFile;
+    if (wavFile.open("..\\Qliq\\ClickSound-32kHz-Mono-Signed-LE-16.wav")) {
+      clickSound = wavFile.readAll();
+    }
+    wavFile.close();
   }
   ~MainWindowPrivate()
   {
@@ -65,12 +75,14 @@ public:
   AudioInputDevice *audioInput;
   VolumeRenderArea *volumeRenderArea;
   WaveRenderArea *waveRenderArea;
+  QSlider *volumeSlider;
   QByteArray randomBytes;
   quint8 currentByte;
   int currentByteIndex;
   bool inverter;
   QMutex *sampleBufferMutex;
   qint64 lastDeltaT;
+  QByteArray clickSound;
 };
 
 
@@ -93,18 +105,17 @@ MainWindow::MainWindow(QWidget *parent)
   d->waveRenderArea = new WaveRenderArea(d->sampleBufferMutex);
   ui->layout->addWidget(d->waveRenderArea);
   d->waveRenderArea->setAudioFormat(d->audioFormat);
+  d->waveRenderArea->setPattern(d->clickSound);
   QObject::connect(d->waveRenderArea, SIGNAL(click(qint64)), SLOT(onClick(qint64)));
 
   d->audioInput  = new AudioInputDevice(d->audioFormat, d->sampleBufferMutex, this);
-  QObject::connect(d->audioInput, SIGNAL(update()), SLOT(onRefreshDisplay()));
+  QObject::connect(d->audioInput, SIGNAL(update()), SLOT(refreshDisplay()));
 
-  QSlider *volumeSlider = new QSlider(Qt::Horizontal);
-  volumeSlider->setRange(0, 100);
-  QObject::connect(volumeSlider, SIGNAL(valueChanged(int)), SLOT(onVolumeSliderChanged(int)));
-  ui->layout->addWidget(volumeSlider);
+  QObject::connect(d->volumeSlider, SIGNAL(valueChanged(int)), SLOT(onVolumeSliderChanged(int)));
+  ui->layout->addWidget(d->volumeSlider);
 
   d->audio = new QAudioInput(d->audioDeviceInfo, d->audioFormat, this);
-  volumeSlider->setValue(qRound(100 * d->audio->volume()));
+  d->volumeSlider->setValue(qRound(100 * d->audio->volume()));
   QObject::connect(d->audio, SIGNAL(stateChanged(QAudio::State)), SLOT(onAudioStateChanged(QAudio::State)));
 
   ui->layout->addStretch();
@@ -118,6 +129,9 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+  Q_D(MainWindow);
+  d->audio->stop();
+  d->audioInput->stop();
   delete ui;
 }
 
@@ -143,7 +157,7 @@ void MainWindow::onAudioStateChanged(QAudio::State audioState)
 }
 
 
-void MainWindow::onRefreshDisplay(void)
+void MainWindow::refreshDisplay(void)
 {
   Q_D(MainWindow);
   d->volumeRenderArea->setLevel(d->audioInput->level());
@@ -176,8 +190,7 @@ void MainWindow::addBit(bool bit)
   d->currentByte |= bit << d->currentByteIndex;
   ++d->currentByteIndex;
   if (d->currentByteIndex > 7) {
-    // ui->statusBar->showMessage(QString("%1").arg(d->currentByte));
-    qDebug() << d->currentByte;
+    ui->statusBar->showMessage(QString("%1").arg(d->currentByte));
     d->randomBytes.append(d->currentByte);
     d->currentByte = 0;
     d->currentByteIndex = 0;

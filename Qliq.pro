@@ -26,13 +26,17 @@ SOURCES += main.cpp\
     global.cpp \
     volumerenderarea.cpp \
     waverenderarea.cpp \
-    audioinputdevice.cpp
+    audioinputdevice.cpp \
+    util.cpp \
+    wavfile.cpp
 
 HEADERS  += mainwindow.h \
     global.h \
     volumerenderarea.h \
     waverenderarea.h \
-    audioinputdevice.h
+    audioinputdevice.h \
+    util.h \
+    wavfile.h
 
 FORMS += mainwindow.ui
 

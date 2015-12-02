@@ -35,7 +35,8 @@ class WaveRenderArea : public QWidget
   Q_OBJECT
 public:
   WaveRenderArea(QMutex *mutex, QWidget *parent = Q_NULLPTR);
-  void setData(QByteArray);
+  void setPattern(const QByteArray &);
+  void setData(const QByteArray &);
   void setAudioFormat(const QAudioFormat &format);
 
 protected:
@@ -52,8 +53,11 @@ private:
   Q_DECLARE_PRIVATE(WaveRenderArea)
   Q_DISABLE_COPY(WaveRenderArea)
 
+  typedef qint16 SampleType;
+
 private: // methods
   void drawPixmap(void);
+  void correlate(void);
 };
 
 #endif // __WAVERENDERAREA_H_
