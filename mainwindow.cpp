@@ -61,7 +61,14 @@ public:
 
     WavFile wavFile;
     if (wavFile.open("..\\Qliq\\ClickSound-32kHz-Mono-Signed-LE-16.wav")) {
-      clickSound = wavFile.readAll();
+      QByteArray wav = wavFile.readAll();
+      Q_ASSERT(wav.size() % sizeof(qint16) == 0);
+      const qint16 *ptr = reinterpret_cast<const qint16*>(wav.data());
+      const int nSamples = wav.size() / sizeof(qint16);
+      clickSound.resize(nSamples);
+      for (int i = 0; i < nSamples; ++i) {
+        clickSound[i] = ptr[i];
+      }
       qDebug() << wavFile.fileName() << "loaded.";
     }
     wavFile.close();
@@ -83,7 +90,7 @@ public:
   bool inverter;
   QMutex *sampleBufferMutex;
   qint64 lastDeltaT;
-  QByteArray clickSound;
+  QVector<int> clickSound;
 };
 
 

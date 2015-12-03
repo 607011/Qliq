@@ -35,11 +35,12 @@ class WaveRenderArea : public QWidget
   Q_OBJECT
 public:
   WaveRenderArea(QMutex *mutex, QWidget *parent = Q_NULLPTR);
-  void setPattern(const QByteArray &);
-  void setData(const QByteArray &);
+  void setPattern(const QVector<int> &);
+  void setData(const QVector<int> &);
   void setAudioFormat(const QAudioFormat &format);
 
 protected:
+  virtual QSize sizeHint(void) const;
   void paintEvent(QPaintEvent *);
   void resizeEvent(QResizeEvent *);
 

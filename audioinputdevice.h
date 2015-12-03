@@ -42,7 +42,7 @@ public:
 
   qreal level(void) const;
   quint32 maxAmplitude(void) const;
-  const QByteArray &sampleBuffer(void) const;
+  const QVector<int> &sampleBuffer(void) const;
 
   qint64 readData(char *data, qint64 maxlen);
   qint64 writeData(const char *data, qint64 len);

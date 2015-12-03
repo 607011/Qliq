@@ -28,6 +28,7 @@
 #include <QLineF>
 #include <QMutexLocker>
 #include <QElapsedTimer>
+#include <QDateTime>
 #include <qmath.h>
 
 class WaveRenderAreaPrivate
@@ -68,6 +69,12 @@ WaveRenderArea::WaveRenderArea(QMutex *mutex, QWidget *parent)
 }
 
 
+QSize WaveRenderArea::sizeHint(void) const
+{
+ return QSize(512, 128);
+}
+
+
 void WaveRenderArea::paintEvent(QPaintEvent *)
 {
   Q_D(WaveRenderArea);
@@ -95,10 +102,10 @@ void WaveRenderArea::drawPixmap(void)
   Q_ASSERT(d->audioFormat.channelCount() == 1);
   Q_ASSERT(d->audioFormat.sampleSize() == sizeof(SampleType) * 8);
 
-  static const QColor BackgroundColor(0x33, 0x33, 0x33);
-  static const QPen WaveLinePen(QBrush(QColor(0x00, 0xff, 0x00).darker(150)), 0.5);
-  static const QPen XCorrLinePen(QBrush(QColor(0xff, 0xff, 0x00, 0x7f).darker(150)), 0.5);
-  static const QPen PeakPen(QBrush(QColor(0xff, 0x00, 0x00, 0x7f)), 2.0);
+  static const QColor BackgroundColor(0x11, 0x22, 0x11);
+  static const QPen WaveLinePen(QBrush(QColor(0x33, 0xff, 0x33)), 1.0);
+  static const QPen XCorrLinePen(QBrush(QColor(0x33, 0xff, 0x33).darker(300)), 1.0);
+  static const QPen PeakPen(QBrush(QColor(0xff, 0x00, 0x00)), 2.0);
   QPainter p(&d->pixmap);
   p.setRenderHint(QPainter::Antialiasing);
   p.fillRect(d->pixmap.rect(), BackgroundColor);
@@ -110,23 +117,25 @@ void WaveRenderArea::drawPixmap(void)
     const qreal xd = qreal(d->pixmap.width()) / d->sampleBuffer.size();
     qreal x = 0;
     for (int i = 0; i < d->sampleBuffer.size(); ++i) {
+      if (d->maxCorrAmplitude > 0) {
+        const qreal y2 = qAbs(qreal(d->correlated.at(i)) / d->maxCorrAmplitude);
+        xCorrLine.setP1(QPointF(x, height()));
+        xCorrLine.setP2(QPointF(x, height() - y2 * height()));
+        p.setPen(XCorrLinePen);
+        p.drawLine(xCorrLine);
+      }
       const qreal y = qreal(d->sampleBuffer.at(i)) / d->maxAmplitude;
       waveLine.setP2(QPointF(x, halfHeight + y * halfHeight));
       p.setPen(WaveLinePen);
       p.drawLine(waveLine);
       waveLine.setP1(waveLine.p2());
-      if (d->maxCorrAmplitude > 0) {
-        const qreal y2 = qLn(qreal(d->correlated.at(i)) / d->maxCorrAmplitude);
-        xCorrLine.setP2(QPointF(x, halfHeight + y2 * halfHeight));
-        p.setPen(XCorrLinePen);
-        p.drawLine(xCorrLine);
-        xCorrLine.setP1(xCorrLine.p2());
-      }
       x += xd;
     }
     if (d->maxCorrAmplitude > XCorrAmplitudeThreshold) {
       p.setPen(PeakPen);
       p.drawLine(QLineF(d->peakPos * xd, 0, d->peakPos * xd, height()));
+      p.end();
+      d->pixmap.save(QString("..\\Qliq\\screenshot-%1.png").arg(QDateTime::currentMSecsSinceEpoch()));
     }
   }
   update();
@@ -151,39 +160,26 @@ void WaveRenderArea::correlate(void)
     }
     d->correlated[i] = corr;
   }
-  if (d->maxCorrAmplitude > XCorrAmplitudeThreshold && d->peakPos >= 0) {
+  if (d->maxCorrAmplitude > XCorrAmplitudeThreshold) {
     qint64 nsPerFrame = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size());
     qDebug() << d->audioFormat.durationForFrames(d->sampleBuffer.size()) << nsPerFrame * d->peakPos / d->sampleBuffer.size() << d->maxCorrAmplitude;
   }
 }
 
 
-void WaveRenderArea::setPattern(const QByteArray &pattern)
+void WaveRenderArea::setPattern(const QVector<int> &pattern)
 {
   Q_D(WaveRenderArea);
-  Q_ASSERT(pattern.size() % sizeof(SampleType) == 0);
-  d->pattern.clear();
-  const SampleType* pData = reinterpret_cast<const SampleType*>(pattern.data());
-  const int nPatternSamples = pattern.size() / sizeof(SampleType);
-  d->pattern.resize(nPatternSamples);
-  for (int i = 0; i < nPatternSamples; ++i) {
-    d->pattern[i] = pData[i];
-  }
+  d->pattern = pattern;
 }
 
 
-void WaveRenderArea::setData(const QByteArray &data)
+void WaveRenderArea::setData(const QVector<int> &data)
 {
   Q_D(WaveRenderArea);
-  Q_ASSERT(data.size() % sizeof(SampleType) == 0);
   d->dt0 = d->timer.nsecsElapsed();
   QMutexLocker(d->sampleBufferMutex);
-  const SampleType* pData = reinterpret_cast<const SampleType*>(data.data());
-  const int nSamples = data.size() / sizeof(SampleType);
-  d->sampleBuffer.resize(nSamples);
-  for (int i = 0; i < nSamples; ++i) {
-    d->sampleBuffer[i] = pData[i];
-  }
+  d->sampleBuffer = data;
   correlate();
   drawPixmap();
 }

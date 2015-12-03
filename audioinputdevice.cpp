@@ -22,7 +22,7 @@
 #include <QDebug>
 #include <QtEndian>
 #include <QFile>
-
+#include <QVector>
 
 class AudioInputDevicePrivate {
 public:
@@ -37,7 +37,7 @@ public:
   const QAudioFormat format;
   quint32 maxAmplitude;
   qreal level;
-  QByteArray sampleBuffer;
+  QVector<int> sampleBuffer;
   QMutex *sampleBufferMutex;
   QFile audioFile;
 };
@@ -134,7 +134,7 @@ quint32 AudioInputDevice::maxAmplitude(void) const
 }
 
 
-const QByteArray &AudioInputDevice::sampleBuffer(void) const
+const QVector<int> &AudioInputDevice::sampleBuffer(void) const
 {
   return d_ptr->sampleBuffer;
 }
@@ -152,7 +152,12 @@ qint64 AudioInputDevice::writeData(const char *data, qint64 len)
 {
   Q_D(AudioInputDevice);
   d->sampleBufferMutex->lock();
-  d->sampleBuffer = QByteArray::fromRawData(data, len);
+  const qint16 *const ptr = reinterpret_cast<const qint16*>(data);
+  const int nSamples = int(len / sizeof(qint16));
+  d->sampleBuffer.resize(nSamples);
+  for (int i = 0; i < nSamples; ++i) {
+    d->sampleBuffer[i] = ptr[i];
+  }
   if (d->audioFile.isOpen()) {
     d->audioFile.write(data, len);
   }
