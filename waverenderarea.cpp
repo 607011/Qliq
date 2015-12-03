@@ -28,7 +28,7 @@
 #include <QLineF>
 #include <QMutexLocker>
 #include <QElapsedTimer>
-
+#include <qmath.h>
 
 class WaveRenderAreaPrivate
 {
@@ -47,7 +47,7 @@ public:
   QElapsedTimer timer;
   qint64 lastClickTime;
   qint64 dt0;
-  QByteArray sampleBuffer;
+  QVector<int> sampleBuffer;
   QAudioFormat audioFormat;
   QPixmap pixmap;
   quint32 maxAmplitude;
@@ -86,6 +86,8 @@ void WaveRenderArea::resizeEvent(QResizeEvent *e)
 }
 
 
+static qlonglong XCorrAmplitudeThreshold = 400000000;
+
 void WaveRenderArea::drawPixmap(void)
 {
   Q_D(WaveRenderArea);
@@ -105,26 +107,27 @@ void WaveRenderArea::drawPixmap(void)
     QPointF origin(0, halfHeight);
     QLineF waveLine(origin, origin);
     QLineF xCorrLine(origin, origin);
-    const int nSamples = d->sampleBuffer.size() / sizeof(SampleType);
-    const qreal xd = qreal(d->pixmap.width()) / nSamples;
-    const SampleType* buffer = reinterpret_cast<const SampleType*>(d->sampleBuffer.data());
+    const qreal xd = qreal(d->pixmap.width()) / d->sampleBuffer.size();
     qreal x = 0;
-    for (int i = 0; i < nSamples; ++i) {
-      const SampleType* ptr = buffer + i;
-      const qreal y = qreal(*ptr) / d->maxAmplitude;
+    for (int i = 0; i < d->sampleBuffer.size(); ++i) {
+      const qreal y = qreal(d->sampleBuffer.at(i)) / d->maxAmplitude;
       waveLine.setP2(QPointF(x, halfHeight + y * halfHeight));
       p.setPen(WaveLinePen);
       p.drawLine(waveLine);
       waveLine.setP1(waveLine.p2());
-      const qreal y2 = qreal(d->correlated.at(i)) / d->maxCorrAmplitude;
-      xCorrLine.setP2(QPointF(x, halfHeight + y2 * halfHeight));
-      p.setPen(XCorrLinePen);
-      p.drawLine(xCorrLine);
-      xCorrLine.setP1(xCorrLine.p2());
+      if (d->maxCorrAmplitude > 0) {
+        const qreal y2 = qLn(qreal(d->correlated.at(i)) / d->maxCorrAmplitude);
+        xCorrLine.setP2(QPointF(x, halfHeight + y2 * halfHeight));
+        p.setPen(XCorrLinePen);
+        p.drawLine(xCorrLine);
+        xCorrLine.setP1(xCorrLine.p2());
+      }
       x += xd;
     }
-    p.setPen(PeakPen);
-    p.drawLine(QLineF(d->peakPos * xd, 0, d->peakPos * xd, height()));
+    if (d->maxCorrAmplitude > XCorrAmplitudeThreshold) {
+      p.setPen(PeakPen);
+      p.drawLine(QLineF(d->peakPos * xd, 0, d->peakPos * xd, height()));
+    }
   }
   update();
 }
@@ -133,19 +136,14 @@ void WaveRenderArea::drawPixmap(void)
 void WaveRenderArea::correlate(void)
 {
   Q_D(WaveRenderArea);
-  d->peakPos = 0;
+  d->peakPos = -1;
   d->maxCorrAmplitude = 0;
-  const int nSamples = d->sampleBuffer.size() / sizeof(SampleType);
-  d->correlated = QVector<int>(nSamples, static_cast<int>(0));
-  QVector<int> transmitted(nSamples + d->pattern.size(), static_cast<int>(0));
-  const SampleType* buffer = reinterpret_cast<const SampleType*>(d->sampleBuffer.data());
-  for (int i = 0; i < nSamples; ++i) {
-    transmitted[i] = buffer[i];
-  }
-  for (int i = 0; i < nSamples; ++i) {
+  d->correlated = QVector<int>(d->sampleBuffer.size(), static_cast<int>(0));
+  QVector<int> transmitted = d->sampleBuffer + QVector<int>(d->pattern.size(), static_cast<int>(0));
+  for (int i = 0; i < d->correlated.size(); ++i) {
     qlonglong corr = 0;
     for (int j = 0; j < d->pattern.size(); ++j) {
-      corr += transmitted[i + j] * d->pattern.at(j);
+      corr += transmitted.at(i + j) * d->pattern.at(j);
     }
     if (corr > d->maxCorrAmplitude) {
       d->maxCorrAmplitude = corr;
@@ -153,7 +151,10 @@ void WaveRenderArea::correlate(void)
     }
     d->correlated[i] = corr;
   }
-  //    qint64 nsPerFrame = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size() / d->audioFormat.bytesPerFrame());
+  if (d->maxCorrAmplitude > XCorrAmplitudeThreshold && d->peakPos >= 0) {
+    qint64 nsPerFrame = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size());
+    qDebug() << d->audioFormat.durationForFrames(d->sampleBuffer.size()) << nsPerFrame * d->peakPos / d->sampleBuffer.size() << d->maxCorrAmplitude;
+  }
 }
 
 
@@ -162,10 +163,11 @@ void WaveRenderArea::setPattern(const QByteArray &pattern)
   Q_D(WaveRenderArea);
   Q_ASSERT(pattern.size() % sizeof(SampleType) == 0);
   d->pattern.clear();
-  const SampleType* pBuf = reinterpret_cast<const SampleType*>(pattern.data());
+  const SampleType* pData = reinterpret_cast<const SampleType*>(pattern.data());
   const int nPatternSamples = pattern.size() / sizeof(SampleType);
+  d->pattern.resize(nPatternSamples);
   for (int i = 0; i < nPatternSamples; ++i) {
-    d->pattern.append(pBuf[i]);
+    d->pattern[i] = pData[i];
   }
 }
 
@@ -173,9 +175,15 @@ void WaveRenderArea::setPattern(const QByteArray &pattern)
 void WaveRenderArea::setData(const QByteArray &data)
 {
   Q_D(WaveRenderArea);
+  Q_ASSERT(data.size() % sizeof(SampleType) == 0);
   d->dt0 = d->timer.nsecsElapsed();
   QMutexLocker(d->sampleBufferMutex);
-  d->sampleBuffer = data;
+  const SampleType* pData = reinterpret_cast<const SampleType*>(data.data());
+  const int nSamples = data.size() / sizeof(SampleType);
+  d->sampleBuffer.resize(nSamples);
+  for (int i = 0; i < nSamples; ++i) {
+    d->sampleBuffer[i] = pData[i];
+  }
   correlate();
   drawPixmap();
 }
