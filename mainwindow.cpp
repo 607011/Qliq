@@ -33,6 +33,7 @@
 #include <QVBoxLayout>
 #include <QSlider>
 #include <QMutex>
+#include <QFile>
 
 
 class MainWindowPrivate {
@@ -72,10 +73,12 @@ public:
       qDebug() << wavFile.fileName() << "loaded.";
     }
     wavFile.close();
+
+    randomNumberFile.setFileName("..\\Qliq\\random-numbers.bin");
   }
   ~MainWindowPrivate()
   {
-    // ...
+    randomNumberFile.close();
   }
   QAudioDeviceInfo audioDeviceInfo;
   QAudioFormat audioFormat;
@@ -91,7 +94,11 @@ public:
   QMutex *sampleBufferMutex;
   qint64 lastDeltaT;
   QVector<int> clickSound;
+  QFile randomNumberFile;
 };
+
+
+static const int MaxRandomBufferSize = 1;
 
 
 MainWindow::MainWindow(QWidget *parent)
@@ -196,7 +203,8 @@ void MainWindow::onClick(const qint64 dt)
 void MainWindow::addBit(int bit)
 {
   Q_D(MainWindow);
-  d->currentByte |= bit << d->currentByteIndex;
+  d->currentByte |= bit;
+  d->currentByte <<= 1;
   ++d->currentByteIndex;
   if (d->currentByteIndex > 7) {
     ui->statusBar->showMessage(QString("random byte: %1 (%2b) %3h")
@@ -204,6 +212,12 @@ void MainWindow::addBit(int bit)
                                .arg(uint(d->currentByte), 8, 2, QChar('0'))
                                .arg(uint(d->currentByte), 2, 16, QChar('0')), 3500);
     d->randomBytes.append(d->currentByte);
+    if (d->randomBytes.size() >= MaxRandomBufferSize) {
+      d->randomNumberFile.open(QIODevice::WriteOnly | QIODevice::Append);
+      d->randomNumberFile.write(d->randomBytes);
+      d->randomNumberFile.close();
+      d->randomBytes.clear();
+    }
     d->currentByte = 0;
     d->currentByteIndex = 0;
   }
