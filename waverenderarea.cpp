@@ -95,12 +95,6 @@ void WaveRenderArea::resizeEvent(QResizeEvent *e)
 }
 
 
-const QPixmap &WaveRenderArea::pixmap(void) const
-{
-  return d_ptr->pixmap;
-}
-
-
 static qlonglong XCorrAmplitudeThreshold = 400000000;
 
 
@@ -109,7 +103,6 @@ void WaveRenderArea::drawPixmap(void)
   Q_D(WaveRenderArea);
   // input data is supposed to be 16 bit mono
   Q_ASSERT(d->audioFormat.channelCount() == 1);
-  Q_ASSERT(d->audioFormat.sampleSize() == sizeof(SampleType) * 8);
 
   static const QColor BackgroundColor(17, 33, 17);
   static const QPen WaveLinePen(QBrush(QColor(54, 255, 54)), 0.5);
@@ -206,7 +199,6 @@ void WaveRenderArea::setAudioFormat(const QAudioFormat &format)
   Q_D(WaveRenderArea);
   // input data is supposed to be 16 bit mono
   Q_ASSERT(format.channelCount() == 1);
-  Q_ASSERT(format.sampleSize() == sizeof(SampleType) * 8);
   d->audioFormat = format;
   d->maxAmplitude = AudioInputDevice::maxAmplitudeForFormat(d->audioFormat);
 }

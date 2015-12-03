@@ -38,7 +38,6 @@ public:
   void setPattern(const QVector<int> &);
   void setData(const QVector<int> &);
   void setAudioFormat(const QAudioFormat &format);
-  const QPixmap &pixmap(void) const;
 
 protected:
   virtual QSize sizeHint(void) const;
@@ -54,8 +53,6 @@ private:
   QScopedPointer<WaveRenderAreaPrivate> d_ptr;
   Q_DECLARE_PRIVATE(WaveRenderArea)
   Q_DISABLE_COPY(WaveRenderArea)
-
-  typedef qint16 SampleType;
 
 private: // methods
   void drawPixmap(void);
