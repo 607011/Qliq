@@ -51,7 +51,7 @@ private slots:
   void onClick(const qint64 dt);
 
 private: // methods
-  void addBit(bool);
+  void addBit(int);
 };
 
 #endif // MAINWINDOW_H

@@ -27,36 +27,38 @@
 #include <QPointF>
 #include <QLineF>
 #include <QMutexLocker>
-#include <QElapsedTimer>
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <qmath.h>
 
 class WaveRenderAreaPrivate
 {
 public:
   explicit WaveRenderAreaPrivate(QMutex *mutex)
-    : lastClickTime(0)
-    , maxAmplitude(-1)
+    : maxAmplitude(-1)
     , sampleBufferMutex(mutex)
     , peakPos(-1)
     , maxCorrAmplitude(-1)
+    , lastClickTimestampNs(0)
+    , frameTimestampNs(0)
   {
     Q_ASSERT(mutex != Q_NULLPTR);
     timer.start();
   }
   ~WaveRenderAreaPrivate() { /* ... */ }
-  QElapsedTimer timer;
-  qint64 lastClickTime;
-  qint64 dt0;
-  QVector<int> sampleBuffer;
   QAudioFormat audioFormat;
   QPixmap pixmap;
+  QElapsedTimer timer;
   quint32 maxAmplitude;
   QMutex *sampleBufferMutex;
+  QVector<int> sampleBuffer;
   QVector<int> correlated;
   QVector<int> pattern;
   int peakPos;
   qlonglong maxCorrAmplitude;
+  qint64 lastClickTimestampNs;
+  qint64 dt0;
+  qint64 frameTimestampNs;
 };
 
 
@@ -65,13 +67,13 @@ WaveRenderArea::WaveRenderArea(QMutex *mutex, QWidget *parent)
   , d_ptr(new WaveRenderAreaPrivate(mutex))
 {
   setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
-  setMinimumHeight(64);
+  setMinimumHeight(56);
 }
 
 
 QSize WaveRenderArea::sizeHint(void) const
 {
- return QSize(512, 128);
+ return QSize(512, 96);
 }
 
 
@@ -93,7 +95,14 @@ void WaveRenderArea::resizeEvent(QResizeEvent *e)
 }
 
 
+const QPixmap &WaveRenderArea::pixmap(void) const
+{
+  return d_ptr->pixmap;
+}
+
+
 static qlonglong XCorrAmplitudeThreshold = 400000000;
+
 
 void WaveRenderArea::drawPixmap(void)
 {
@@ -120,7 +129,7 @@ void WaveRenderArea::drawPixmap(void)
       if (d->maxCorrAmplitude > 0) {
         const qreal y2 = qAbs(qreal(d->correlated.at(i)) / d->maxCorrAmplitude);
         xCorrLine.setP1(QPointF(x, height()));
-        xCorrLine.setP2(QPointF(x, height() - y2 * height()));
+        xCorrLine.setP2(QPointF(x, height() - qPow(height(), y2)));
         p.setPen(XCorrLinePen);
         p.drawLine(xCorrLine);
       }
@@ -138,7 +147,6 @@ void WaveRenderArea::drawPixmap(void)
       d->pixmap.save(QString("..\\Qliq\\screenshot-%1.png").arg(QDateTime::currentMSecsSinceEpoch()));
     }
   }
-  update();
 }
 
 
@@ -161,8 +169,12 @@ void WaveRenderArea::correlate(void)
     d->correlated[i] = corr;
   }
   if (d->maxCorrAmplitude > XCorrAmplitudeThreshold) {
-    qint64 nsPerFrame = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size());
-    qDebug() << d->audioFormat.durationForFrames(d->sampleBuffer.size()) << nsPerFrame * d->peakPos / d->sampleBuffer.size() << d->maxCorrAmplitude;
+    const qint64 nsPerFrame = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size());
+    const qint64 dt = nsPerFrame * d->peakPos / d->sampleBuffer.size();
+    const qint64 currentTimestamp = d->frameTimestampNs + dt;
+    const qint64 nsElapsed = currentTimestamp - d->lastClickTimestampNs;
+    emit click(nsElapsed);
+    d->lastClickTimestampNs = currentTimestamp;
   }
 }
 
@@ -177,11 +189,12 @@ void WaveRenderArea::setPattern(const QVector<int> &pattern)
 void WaveRenderArea::setData(const QVector<int> &data)
 {
   Q_D(WaveRenderArea);
-  d->dt0 = d->timer.nsecsElapsed();
+  d->frameTimestampNs = d->timer.nsecsElapsed();
   QMutexLocker(d->sampleBufferMutex);
   d->sampleBuffer = data;
   correlate();
   drawPixmap();
+  update();
 }
 
 
@@ -193,5 +206,4 @@ void WaveRenderArea::setAudioFormat(const QAudioFormat &format)
   Q_ASSERT(format.sampleSize() == sizeof(SampleType) * 8);
   d->audioFormat = format;
   d->maxAmplitude = AudioInputDevice::maxAmplitudeForFormat(d->audioFormat);
-  update();
 }

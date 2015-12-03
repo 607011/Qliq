@@ -46,7 +46,7 @@ public:
     , volumeSlider(new QSlider(Qt::Horizontal))
     , currentByte(0)
     , currentByteIndex(0)
-    , inverter(false)
+    , bit(0)
     , sampleBufferMutex(new QMutex)
     , lastDeltaT(0)
   {
@@ -87,7 +87,7 @@ public:
   QByteArray randomBytes;
   quint8 currentByte;
   int currentByteIndex;
-  bool inverter;
+  int bit;
   QMutex *sampleBufferMutex;
   qint64 lastDeltaT;
   QVector<int> clickSound;
@@ -185,20 +185,24 @@ void MainWindow::onVolumeSliderChanged(int value)
 void MainWindow::onClick(const qint64 dt)
 {
   Q_D(MainWindow);
-  bool bit = dt > d->lastDeltaT;
-  addBit(bit ^ d->inverter);
-  d->inverter = !d->inverter;
+  int bit = (dt > d->lastDeltaT) ? d->bit : (d->bit ^ 1);
+  addBit(bit);
+  qDebug() << bit << d->bit << dt << d->lastDeltaT;
+  d->bit ^= 1;
   d->lastDeltaT = dt;
 }
 
 
-void MainWindow::addBit(bool bit)
+void MainWindow::addBit(int bit)
 {
   Q_D(MainWindow);
   d->currentByte |= bit << d->currentByteIndex;
   ++d->currentByteIndex;
   if (d->currentByteIndex > 7) {
-    ui->statusBar->showMessage(QString("%1").arg(d->currentByte));
+    ui->statusBar->showMessage(QString("random byte: %1 (%2b) %3h")
+                               .arg(d->currentByte)
+                               .arg(uint(d->currentByte), 8, 2, QChar('0'))
+                               .arg(uint(d->currentByte), 2, 16, QChar('0')), 3500);
     d->randomBytes.append(d->currentByte);
     d->currentByte = 0;
     d->currentByteIndex = 0;

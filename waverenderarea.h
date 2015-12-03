@@ -26,7 +26,7 @@
 #include <QAudioFormat>
 #include <QResizeEvent>
 #include <QMutex>
-
+#include <QPixmap>
 
 class WaveRenderAreaPrivate;
 
@@ -38,6 +38,7 @@ public:
   void setPattern(const QVector<int> &);
   void setData(const QVector<int> &);
   void setAudioFormat(const QAudioFormat &format);
+  const QPixmap &pixmap(void) const;
 
 protected:
   virtual QSize sizeHint(void) const;
