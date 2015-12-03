@@ -197,7 +197,6 @@ void WaveRenderArea::setData(const QVector<int> &data)
 void WaveRenderArea::setAudioFormat(const QAudioFormat &format)
 {
   Q_D(WaveRenderArea);
-  // input data is supposed to be 16 bit mono
   Q_ASSERT(format.channelCount() == 1);
   d->audioFormat = format;
   d->maxAmplitude = AudioInputDevice::maxAmplitudeForFormat(d->audioFormat);
