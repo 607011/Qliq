@@ -111,12 +111,11 @@ void WaveRenderArea::drawPixmap(void)
   Q_ASSERT(d->audioFormat.channelCount() == 1);
   Q_ASSERT(d->audioFormat.sampleSize() == sizeof(SampleType) * 8);
 
-  static const QColor BackgroundColor(0x11, 0x22, 0x11);
-  static const QPen WaveLinePen(QBrush(QColor(0x33, 0xff, 0x33)), 1.0);
-  static const QPen XCorrLinePen(QBrush(QColor(0x33, 0xff, 0x33).darker(300)), 1.0);
-  static const QPen PeakPen(QBrush(QColor(0xff, 0x00, 0x00)), 2.0);
+  static const QColor BackgroundColor(17, 33, 17);
+  static const QPen WaveLinePen(QBrush(QColor(54, 255, 54)), 0.5);
+  static const QPen XCorrLinePen(QColor(225, 0, 152));
+  static const QPen PeakPen(QColor(226, 255, 226));
   QPainter p(&d->pixmap);
-  p.setRenderHint(QPainter::Antialiasing);
   p.fillRect(d->pixmap.rect(), BackgroundColor);
   if (d->audioFormat.isValid() && d->maxAmplitude > 0 && !d->sampleBuffer.isEmpty()) {
     const int halfHeight = d->pixmap.height() / 2;
@@ -127,12 +126,14 @@ void WaveRenderArea::drawPixmap(void)
     qreal x = 0;
     for (int i = 0; i < d->sampleBuffer.size(); ++i) {
       if (d->maxCorrAmplitude > 0) {
+        p.setRenderHint(QPainter::Antialiasing, false);
         const qreal y2 = qAbs(qreal(d->correlated.at(i)) / d->maxCorrAmplitude);
         xCorrLine.setP1(QPointF(x, height()));
-        xCorrLine.setP2(QPointF(x, height() - qPow(height(), y2)));
+        xCorrLine.setP2(QPointF(x, height() - qPow(height() / 4, y2)));
         p.setPen(XCorrLinePen);
         p.drawLine(xCorrLine);
       }
+      p.setRenderHint(QPainter::Antialiasing, true);
       const qreal y = qreal(d->sampleBuffer.at(i)) / d->maxAmplitude;
       waveLine.setP2(QPointF(x, halfHeight + y * halfHeight));
       p.setPen(WaveLinePen);
@@ -141,8 +142,10 @@ void WaveRenderArea::drawPixmap(void)
       x += xd;
     }
     if (d->maxCorrAmplitude > XCorrAmplitudeThreshold) {
+      p.setRenderHint(QPainter::Antialiasing, false);
       p.setPen(PeakPen);
-      p.drawLine(QLineF(d->peakPos * xd, 0, d->peakPos * xd, height()));
+      const int x = int(d->peakPos * xd);
+      p.drawLine(QLine(x, 0, x, height()));
       p.end();
       d->pixmap.save(QString("..\\Qliq\\screenshot-%1.png").arg(QDateTime::currentMSecsSinceEpoch()));
     }
