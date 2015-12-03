@@ -35,9 +35,10 @@ class WaveRenderAreaPrivate
 public:
   explicit WaveRenderAreaPrivate(QMutex *mutex)
     : lastClickTime(0)
-    , maxAmplitude(0)
+    , maxAmplitude(-1)
     , sampleBufferMutex(mutex)
-    , peakPos(0)
+    , peakPos(-1)
+    , maxCorrAmplitude(-1)
   {
     Q_ASSERT(mutex != Q_NULLPTR);
     timer.start();
@@ -47,13 +48,14 @@ public:
   qint64 lastClickTime;
   qint64 dt0;
   QByteArray sampleBuffer;
-  QByteArray pattern;
   QAudioFormat audioFormat;
   QPixmap pixmap;
   quint32 maxAmplitude;
   QMutex *sampleBufferMutex;
   QVector<int> correlated;
+  QVector<int> pattern;
   int peakPos;
+  qlonglong maxCorrAmplitude;
 };
 
 
@@ -63,13 +65,6 @@ WaveRenderArea::WaveRenderArea(QMutex *mutex, QWidget *parent)
 {
   setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
   setMinimumHeight(64);
-}
-
-
-void WaveRenderArea::setPattern(const QByteArray &pattern)
-{
-  Q_D(WaveRenderArea);
-  d->pattern = pattern;
 }
 
 
@@ -101,7 +96,7 @@ void WaveRenderArea::drawPixmap(void)
   static const QColor BackgroundColor(0x33, 0x33, 0x33);
   static const QPen WaveLinePen(QBrush(QColor(0x00, 0xff, 0x00).darker(150)), 0.5);
   static const QPen XCorrLinePen(QBrush(QColor(0xff, 0xff, 0x00, 0x7f).darker(150)), 0.5);
-  static const QPen PeakPen(QBrush(Qt::red), 3.0);
+  static const QPen PeakPen(QBrush(QColor(0xff, 0x00, 0x00, 0x7f)), 2.0);
   QPainter p(&d->pixmap);
   p.setRenderHint(QPainter::Antialiasing);
   p.fillRect(d->pixmap.rect(), BackgroundColor);
@@ -114,7 +109,6 @@ void WaveRenderArea::drawPixmap(void)
     const qreal xd = qreal(d->pixmap.width()) / nSamples;
     const SampleType* buffer = reinterpret_cast<const SampleType*>(d->sampleBuffer.data());
     qreal x = 0;
-//    qint64 nsPerFrame = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size() / d->audioFormat.bytesPerFrame());
     for (int i = 0; i < nSamples; ++i) {
       const SampleType* ptr = buffer + i;
       const qreal y = qreal(*ptr) / d->maxAmplitude;
@@ -122,13 +116,11 @@ void WaveRenderArea::drawPixmap(void)
       p.setPen(WaveLinePen);
       p.drawLine(waveLine);
       waveLine.setP1(waveLine.p2());
-
-      const qreal y2 = 1e-9* d->correlated.at(i);
+      const qreal y2 = qreal(d->correlated.at(i)) / d->maxCorrAmplitude;
       xCorrLine.setP2(QPointF(x, halfHeight + y2 * halfHeight));
       p.setPen(XCorrLinePen);
       p.drawLine(xCorrLine);
       xCorrLine.setP1(xCorrLine.p2());
-
       x += xd;
     }
     p.setPen(PeakPen);
@@ -142,26 +134,38 @@ void WaveRenderArea::correlate(void)
 {
   Q_D(WaveRenderArea);
   d->peakPos = 0;
-  int maxAmplitude = 0;
+  d->maxCorrAmplitude = 0;
   const int nSamples = d->sampleBuffer.size() / sizeof(SampleType);
-  const SampleType* pattern = reinterpret_cast<const SampleType*>(d->pattern.data());
-  const int nPatternSamples = d->pattern.size() / sizeof(SampleType);
   d->correlated = QVector<int>(nSamples, static_cast<int>(0));
-  QVector<int> transmitted(nSamples + nPatternSamples, static_cast<int>(0));
+  QVector<int> transmitted(nSamples + d->pattern.size(), static_cast<int>(0));
   const SampleType* buffer = reinterpret_cast<const SampleType*>(d->sampleBuffer.data());
   for (int i = 0; i < nSamples; ++i) {
     transmitted[i] = buffer[i];
   }
   for (int i = 0; i < nSamples; ++i) {
-    long corr = 0;
-    for (int j = 0; j < nPatternSamples; ++j) {
-      corr += transmitted[i + j] * pattern[j];
+    qlonglong corr = 0;
+    for (int j = 0; j < d->pattern.size(); ++j) {
+      corr += transmitted[i + j] * d->pattern.at(j);
     }
-    if (corr > maxAmplitude) {
-      maxAmplitude = corr;
+    if (corr > d->maxCorrAmplitude) {
+      d->maxCorrAmplitude = corr;
       d->peakPos = i;
     }
     d->correlated[i] = corr;
+  }
+  //    qint64 nsPerFrame = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size() / d->audioFormat.bytesPerFrame());
+}
+
+
+void WaveRenderArea::setPattern(const QByteArray &pattern)
+{
+  Q_D(WaveRenderArea);
+  Q_ASSERT(pattern.size() % sizeof(SampleType) == 0);
+  d->pattern.clear();
+  const SampleType* pBuf = reinterpret_cast<const SampleType*>(pattern.data());
+  const int nPatternSamples = pattern.size() / sizeof(SampleType);
+  for (int i = 0; i < nPatternSamples; ++i) {
+    d->pattern.append(pBuf[i]);
   }
 }
 
@@ -183,7 +187,6 @@ void WaveRenderArea::setAudioFormat(const QAudioFormat &format)
   // input data is supposed to be 16 bit mono
   Q_ASSERT(format.channelCount() == 1);
   Q_ASSERT(format.sampleSize() == sizeof(SampleType) * 8);
-
   d->audioFormat = format;
   d->maxAmplitude = AudioInputDevice::maxAmplitudeForFormat(d->audioFormat);
   update();

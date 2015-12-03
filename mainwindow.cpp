@@ -62,6 +62,7 @@ public:
     WavFile wavFile;
     if (wavFile.open("..\\Qliq\\ClickSound-32kHz-Mono-Signed-LE-16.wav")) {
       clickSound = wavFile.readAll();
+      qDebug() << wavFile.fileName() << "loaded.";
     }
     wavFile.close();
   }
