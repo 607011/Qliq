@@ -32,6 +32,7 @@ class VolumeRenderArea : public QWidget
   Q_OBJECT
 public:
   explicit VolumeRenderArea(QWidget *parent = Q_NULLPTR);
+  ~VolumeRenderArea();
   void setLevel(qreal value);
 
 protected:

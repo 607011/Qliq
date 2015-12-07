@@ -71,6 +71,9 @@ WaveRenderArea::WaveRenderArea(QMutex *mutex, QWidget *parent)
 }
 
 
+WaveRenderArea::~WaveRenderArea() { /* ... */ }
+
+
 QSize WaveRenderArea::sizeHint(void) const
 {
  return QSize(512, 96);
