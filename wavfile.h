@@ -38,29 +38,34 @@
 **
 ****************************************************************************/
 
-#ifndef WAVFILE_H
-#define WAVFILE_H
+#ifndef __WAVFILE_H_
+#define __WAVFILE_H_
 
 #include <QObject>
-#include <QFile>
 #include <QAudioFormat>
+#include <QScopedPointer>
+#include <QFile>
+
+class WavFilePrivate;
 
 class WavFile : public QFile
 {
 public:
-    WavFile(QObject *parent = Q_NULLPTR);
+  WavFile(QObject *parent = Q_NULLPTR);
+  ~WavFile();
 
-    using QFile::open;
-    bool open(const QString &fileName);
-    const QAudioFormat &fileFormat(void) const;
-    qint64 headerLength(void) const;
-
-private:
-    bool readHeader(void);
+  bool open(const QString &fileName);
+  const QAudioFormat &fileFormat(void) const;
+  qint64 headerLength(void) const;
 
 private:
-    QAudioFormat m_fileFormat;
-    qint64 m_headerLength;
+  QScopedPointer<WavFilePrivate> d_ptr;
+  Q_DECLARE_PRIVATE(WavFile)
+  Q_DISABLE_COPY(WavFile)
+
+private:
+  bool readHeader(void);
+
 };
 
-#endif // WAVFILE_H
+#endif // __WAVFILE_H_
