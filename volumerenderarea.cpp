@@ -44,6 +44,12 @@ VolumeRenderArea::VolumeRenderArea(QWidget *parent)
 }
 
 
+VolumeRenderArea::~VolumeRenderArea()
+{
+  /* ... */
+}
+
+
 void VolumeRenderArea::paintEvent(QPaintEvent *)
 {
   Q_D(VolumeRenderArea);
