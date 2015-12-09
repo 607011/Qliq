@@ -22,10 +22,9 @@
 #include "volumerenderarea.h"
 #include "waverenderarea.h"
 #include "audioinputdevice.h"
-#include "wavfile.h"
+#include "global.h"
 
 #include <QDebug>
-#include <QBitArray>
 #include <QAudioInput>
 #include <QAudioFormat>
 #include <QAudioDeviceInfo>
@@ -34,6 +33,9 @@
 #include <QSlider>
 #include <QMutex>
 #include <QFile>
+#include <QSettings>
+#include <QElapsedTimer>
+#include <limits>
 
 
 class MainWindowPrivate {
@@ -44,12 +46,14 @@ public:
     , audioInput(Q_NULLPTR)
     , volumeRenderArea(Q_NULLPTR)
     , waveRenderArea(Q_NULLPTR)
-    , volumeSlider(new QSlider(Qt::Horizontal))
     , currentByte(0)
     , currentByteIndex(0)
     , flipBit(false)
     , sampleBufferMutex(new QMutex)
     , lastDeltaT(0)
+    , paused(false)
+    , settings(QSettings::IniFormat, QSettings::UserScope, AppCompanyName, AppName)
+    , bps(std::numeric_limits<qreal>::min())
   {
     audioFormat.setSampleRate(44100);
     audioFormat.setChannelCount(1);
@@ -57,24 +61,9 @@ public:
     audioFormat.setSampleSize(16);
     audioFormat.setByteOrder(QAudioFormat::LittleEndian);
     audioFormat.setSampleType(QAudioFormat::SignedInt);
-    volumeSlider->setTickPosition(QSlider::TicksBelow);
-    volumeSlider->setRange(0, 100);
-
-    WavFile wavFile;
-    if (wavFile.open("..\\Qliq\\GeigerClick-44,1kHz-Stereo-Signed-LE-16.wav")) {
-      QByteArray wav = wavFile.readAll();
-      Q_ASSERT(wav.size() % sizeof(qint16) == 0);
-      const qint16 *ptr = reinterpret_cast<const qint16*>(wav.data());
-      const int nSamples = wav.size() / sizeof(qint16);
-      clickSound.resize(nSamples);
-      for (int i = 0; i < nSamples; ++i) {
-        clickSound[i] = ptr[i];
-      }
-      qDebug() << wavFile.fileName() << "loaded.";
-    }
-    wavFile.close();
 
     randomNumberFile.setFileName("..\\Qliq\\random-numbers.bin");
+    randomNumberFile.open(QIODevice::WriteOnly | QIODevice::Append);
   }
   ~MainWindowPrivate()
   {
@@ -86,19 +75,21 @@ public:
   AudioInputDevice *audioInput;
   VolumeRenderArea *volumeRenderArea;
   WaveRenderArea *waveRenderArea;
-  QSlider *volumeSlider;
   QByteArray randomBytes;
   quint8 currentByte;
   int currentByteIndex;
   bool flipBit;
   QMutex *sampleBufferMutex;
   qint64 lastDeltaT;
-  QVector<int> clickSound;
+  bool paused;
   QFile randomNumberFile;
+  QSettings settings;
+  QElapsedTimer timer;
+  qreal bps;
 };
 
 
-static const int MaxRandomBufferSize = 64;
+static const int MaxRandomBufferSize = 8;
 
 
 MainWindow::MainWindow(QWidget *parent)
@@ -109,42 +100,40 @@ MainWindow::MainWindow(QWidget *parent)
   Q_D(MainWindow);
   ui->setupUi(this);
 
-  qDebug() << d->audioDeviceInfo.supportedCodecs()
-           << d->audioDeviceInfo.supportedSampleRates()
-           << d->audioDeviceInfo.supportedSampleSizes()
-           << d->audioDeviceInfo.supportedSampleTypes()
-           << d->audioDeviceInfo.supportedChannelCounts();
   if (!d->audioDeviceInfo.isFormatSupported(d->audioFormat)) {
     d->audioFormat = d->audioDeviceInfo.nearestFormat(d->audioFormat);
     qWarning() << "Default format not supported - trying to use nearest" << d->audioFormat;
   }
-  else {
-    qDebug() << d->audioFormat;
-    qDebug() << d->audioDeviceInfo.nearestFormat(d->audioFormat);
-  }
 
   d->volumeRenderArea = new VolumeRenderArea;
-  ui->layout->addWidget(d->volumeRenderArea);
 
   d->waveRenderArea = new WaveRenderArea(d->sampleBufferMutex);
-  ui->layout->addWidget(d->waveRenderArea);
   d->waveRenderArea->setAudioFormat(d->audioFormat);
-  d->waveRenderArea->setPattern(d->clickSound);
+  d->waveRenderArea->setWritePixmap(false);
   QObject::connect(d->waveRenderArea, SIGNAL(click(qint64)), SLOT(onClick(qint64)));
+
+  QObject::connect(ui->thresholdSlider, SIGNAL(valueChanged(int)), d->waveRenderArea, SLOT(setThreshold(int)));
+  const quint32 maxAmpl = AudioInputDevice::maxAmplitudeForFormat(d->audioFormat);
+  ui->thresholdSlider->setRange(maxAmpl / 100, maxAmpl);
+  ui->thresholdSlider->setValue(ui->thresholdSlider->maximum() * 7 / 8);
 
   d->audioInput  = new AudioInputDevice(d->audioFormat, d->sampleBufferMutex, this);
   QObject::connect(d->audioInput, SIGNAL(update()), SLOT(refreshDisplay()));
 
-  QObject::connect(d->volumeSlider, SIGNAL(valueChanged(int)), SLOT(onVolumeSliderChanged(int)));
-  ui->layout->addWidget(d->volumeSlider);
+  QObject::connect(ui->startStopButton, SIGNAL(clicked(bool)), SLOT(startStop()));
+
+  QObject::connect(ui->volumeSlider, SIGNAL(valueChanged(int)), SLOT(onVolumeSliderChanged(int)));
 
   d->audio = new QAudioInput(d->audioDeviceInfo, d->audioFormat, this);
-  d->volumeSlider->setValue(qRound(100 * d->audio->volume()));
+  ui->volumeSlider->setValue(qRound(100 * d->audio->volume()));
   QObject::connect(d->audio, SIGNAL(stateChanged(QAudio::State)), SLOT(onAudioStateChanged(QAudio::State)));
 
-  ui->layout->addStretch();
+  ui->graphLayout->addWidget(d->waveRenderArea);
+  ui->graphLayout->addWidget(d->volumeRenderArea);
 
   ui->statusBar->showMessage(d->audioDeviceInfo.deviceName());
+
+  restoreSettings();
 
   d->audioInput->start();
   d->audio->start(d->audioInput);
@@ -160,32 +149,39 @@ MainWindow::~MainWindow()
 }
 
 
-void MainWindow::onAudioStateChanged(QAudio::State audioState)
+void MainWindow::closeEvent(QCloseEvent *e)
+{
+  saveSettings();
+  e->accept();
+}
+
+
+void MainWindow::saveSettings(void)
 {
   Q_D(MainWindow);
-  qDebug() << audioState;
-  switch (audioState) {
-  case QAudio::StoppedState:
-    if (d->audio->error() != QAudio::NoError) {
-      // Error handling
-    }
-    else {
-      // Finished recording
-    }
-    break;
-  case QAudio::ActiveState:
-    break;
-  default:
-    break;
-  }
+  d->settings.setValue("mainwindow/geometry", saveGeometry());
+  d->settings.setValue("analysis/threshold", d->waveRenderArea->threshold());
+  d->settings.setValue("analysis/lockTimeNs", d->waveRenderArea->lockTimeNs());
+  d->settings.sync();
+}
+
+
+void MainWindow::restoreSettings(void)
+{
+  Q_D(MainWindow);
+  restoreGeometry(d->settings.value("mainwindow/geometry", 32000).toByteArray());
+  d->waveRenderArea->setThreshold(d->settings.value("analysis/threshold", 32000).toInt());
+  d->waveRenderArea->setLockTimeNs(d->settings.value("analysis/lockTimeNs", 1600 * 1000).toLongLong());
 }
 
 
 void MainWindow::refreshDisplay(void)
 {
   Q_D(MainWindow);
-  d->volumeRenderArea->setLevel(d->audioInput->level());
-  d->waveRenderArea->setData(d->audioInput->sampleBuffer());
+  if (!d->paused) {
+    d->volumeRenderArea->setLevel(d->audioInput->level());
+    d->waveRenderArea->setData(d->audioInput->sampleBuffer());
+  }
 }
 
 
@@ -204,15 +200,16 @@ void MainWindow::addBit(int bit)
   d->currentByte |= bit << d->currentByteIndex;
   ++d->currentByteIndex;
   if (d->currentByteIndex > 7) {
-    ui->statusBar->showMessage(QString("random byte: %1 (%2b) %3h")
-                               .arg(d->currentByte)
+    ui->statusBar->showMessage(QString("%1 (0x%2) %3 byte/s")
                                .arg(uint(d->currentByte), 8, 2, QChar('0'))
-                               .arg(uint(d->currentByte), 2, 16, QChar('0')), 3500);
+                               .arg(uint(d->currentByte), 2, 16, QChar('0'))
+                               .arg(d->bps, 0, 'f', 1));
     d->randomBytes.append(d->currentByte);
     if (d->randomBytes.size() >= MaxRandomBufferSize) {
-      d->randomNumberFile.open(QIODevice::WriteOnly | QIODevice::Append);
+      d->bps = 1e9 * MaxRandomBufferSize / d->timer.nsecsElapsed();
+      d->timer.restart();
       d->randomNumberFile.write(d->randomBytes);
-      d->randomNumberFile.close();
+      d->randomNumberFile.flush();
       d->randomBytes.clear();
     }
     d->currentByte = 0;
@@ -224,9 +221,36 @@ void MainWindow::addBit(int bit)
 void MainWindow::onClick(const qint64 dt)
 {
   Q_D(MainWindow);
-  int bit = (dt > d->lastDeltaT) ^ d->flipBit ? 0 : 1;
+  int bit = (dt > d->lastDeltaT);
   addBit(bit);
-  // qDebug() << bit << d->flipBit << dt << d->lastDeltaT;
-  d->flipBit = !d->flipBit;
+  // d->flipBit = !d->flipBit;
   d->lastDeltaT = dt;
+}
+
+
+void MainWindow::startStop(void)
+{
+  Q_D(MainWindow);
+  d->paused = !d->paused;
+}
+
+
+void MainWindow::onAudioStateChanged(QAudio::State audioState)
+{
+  Q_D(MainWindow);
+  switch (audioState) {
+  case QAudio::StoppedState:
+    if (d->audio->error() != QAudio::NoError) {
+      // Error handling
+    }
+    else {
+      // Finished recording
+    }
+    break;
+  case QAudio::ActiveState:
+    d->timer.start();
+    break;
+  default:
+    break;
+  }
 }

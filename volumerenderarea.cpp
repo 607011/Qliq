@@ -28,7 +28,7 @@ class VolumeRenderAreaPrivate
 {
 public:
   VolumeRenderAreaPrivate(void)
-    : level(0)
+    : level(0.0)
   { /* ... */ }
   ~VolumeRenderAreaPrivate() { /* ... */ }
   qreal level;
@@ -73,6 +73,6 @@ void VolumeRenderArea::setLevel(qreal value)
 {
   Q_D(VolumeRenderArea);
   d->level = value;
-  update();
+  // update();
 }
 

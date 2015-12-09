@@ -30,6 +30,7 @@
 #include <QDateTime>
 #include <QElapsedTimer>
 #include <qmath.h>
+#include <limits>
 
 class WaveRenderAreaPrivate
 {
@@ -38,8 +39,11 @@ public:
     : doWritePixmap(false)
     , maxAmplitude(-1)
     , sampleBufferMutex(mutex)
-    , peakPos(-1)
-    , maxCorrAmplitude(-1)
+    , threshold(std::numeric_limits<int>::max())
+    , mouseDown(false)
+    , pos1(0)
+    , pos2(0)
+    , lockTimeNs(4000 * 1000)
     , lastClickTimestampNs(0)
     , frameTimestampNs(0)
   {
@@ -49,16 +53,18 @@ public:
   ~WaveRenderAreaPrivate() { /* ... */ }
   QAudioFormat audioFormat;
   QPixmap pixmap;
+  bool doWritePixmap;
   QElapsedTimer timer;
   quint32 maxAmplitude;
   QMutex *sampleBufferMutex;
   QVector<int> sampleBuffer;
-  QVector<int> correlated;
-  QVector<int> pattern;
-  int peakPos;
-  qlonglong maxCorrAmplitude;
+  int threshold;
+  QVector<int> peakPos;
+  bool mouseDown;
+  int pos1;
+  int pos2;
+  qint64 lockTimeNs;
   qint64 lastClickTimestampNs;
-  qint64 dt0;
   qint64 frameTimestampNs;
 };
 
@@ -99,90 +105,129 @@ void WaveRenderArea::resizeEvent(QResizeEvent *e)
 }
 
 
-static qlonglong XCorrAmplitudeThreshold = 400000000;
+void WaveRenderArea::mousePressEvent(QMouseEvent *e)
+{
+  Q_D(WaveRenderArea);
+  if (e->button() == Qt::LeftButton) {
+    d->mouseDown = true;
+    d->pos1 = e->x();
+    d->pos2 = d->pos1;
+    drawPixmap();
+  }
+}
+
+
+void WaveRenderArea::mouseReleaseEvent(QMouseEvent *e)
+{
+  Q_D(WaveRenderArea);
+  if (e->button() == Qt::LeftButton) {
+    d->mouseDown = false;
+    drawPixmap();
+    d->lockTimeNs = (qMax(d->pos1, d->pos2) - qMin(d->pos1, d->pos2)) * 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size()) / width();
+  }
+}
+
+
+void WaveRenderArea::mouseMoveEvent(QMouseEvent *e)
+{
+  Q_D(WaveRenderArea);
+  if (d->mouseDown) {
+    d->pos2 = e->x();
+    drawPixmap();
+  }
+}
+
+
+void WaveRenderArea::setThreshold(int threshold)
+{
+  Q_D(WaveRenderArea);
+  d->threshold = threshold;
+  drawPixmap();
+}
+
+
+void WaveRenderArea::setLockTimeNs(qint64 lockTimeNs)
+{
+  Q_D(WaveRenderArea);
+  d->lockTimeNs = lockTimeNs;
+  drawPixmap();
+}
 
 
 void WaveRenderArea::drawPixmap(void)
 {
   Q_D(WaveRenderArea);
-  // input data is supposed to be 16 bit mono
+  if (d->pixmap.isNull())
+    return;
   Q_ASSERT(d->audioFormat.channelCount() == 1);
-
   static const QColor BackgroundColor(17, 33, 17);
   static const QPen WaveLinePen(QBrush(QColor(54, 255, 54)), 0.5);
-  static const QPen XCorrLinePen(QColor(225, 0, 152));
-  static const QPen PeakPen(QColor(226, 255, 226));
+  static const QPen PeakPen(QColor(240, 255, 240).darker());
   QPainter p(&d->pixmap);
   p.fillRect(d->pixmap.rect(), BackgroundColor);
   if (d->audioFormat.isValid() && d->maxAmplitude > 0 && !d->sampleBuffer.isEmpty()) {
     const int halfHeight = d->pixmap.height() / 2;
     QPointF origin(0, halfHeight);
     QLineF waveLine(origin, origin);
-    QLineF xCorrLine(origin, origin);
     const qreal xd = qreal(d->pixmap.width()) / d->sampleBuffer.size();
-    qreal x = 0;
-    for (int i = 0; i < d->sampleBuffer.size(); ++i) {
-      if (d->maxCorrAmplitude > 0) {
-        p.setRenderHint(QPainter::Antialiasing, false);
-        const qreal y2 = qAbs(qreal(d->correlated.at(i)) / d->maxCorrAmplitude);
-        xCorrLine.setP1(QPointF(x, height()));
-        xCorrLine.setP2(QPointF(x, height() - qPow(height() / 4, y2)));
-        p.setPen(XCorrLinePen);
-        p.drawLine(xCorrLine);
+    if (!d->peakPos.isEmpty()) {
+      p.setRenderHint(QPainter::Antialiasing, false);
+      p.setPen(PeakPen);
+      for (int i = 0; i < d->peakPos.size(); ++i) {
+        const int x = int(d->peakPos.at(i) * xd);
+        p.drawLine(QLine(x, 0, x, height()));
       }
+    }
+    qreal x = 0.0;
+    for (int i = 0; i < d->sampleBuffer.size(); ++i) {
       p.setRenderHint(QPainter::Antialiasing, true);
       const qreal y = qreal(d->sampleBuffer.at(i)) / d->maxAmplitude;
-      waveLine.setP2(QPointF(x, halfHeight + y * halfHeight));
+      waveLine.setP2(QPointF(x, halfHeight - y * halfHeight));
       p.setPen(WaveLinePen);
       p.drawLine(waveLine);
       waveLine.setP1(waveLine.p2());
       x += xd;
     }
-    if (d->maxCorrAmplitude > XCorrAmplitudeThreshold) {
-      p.setRenderHint(QPainter::Antialiasing, false);
-      p.setPen(PeakPen);
-      const int x = int(d->peakPos * xd);
-      p.drawLine(QLine(x, 0, x, height()));
+    static const QBrush ThresholdBrush(QColor(255, 255, 255, 72), Qt::SolidPattern);
+    p.setRenderHint(QPainter::Antialiasing, false);
+    p.fillRect(QRectF(0, 0, width(), halfHeight - qreal(d->threshold) / d->maxAmplitude * halfHeight), ThresholdBrush);
+    if (d->mouseDown) {
+      static const QBrush MarkerBrush(QColor(255, 255, 0, 72), Qt::SolidPattern);
+      p.fillRect(QRectF(d->pos1, 0, (d->pos2 - d->pos1), height()), MarkerBrush);
+    }
+    if (d->doWritePixmap && !d->peakPos.isEmpty()) {
       p.end();
-      d->pixmap.save(QString("..\\Qliq\\screenshot-%1.png").arg(QDateTime::currentMSecsSinceEpoch()));
+      d->pixmap.save(QString("..\\Qliq\\screenshots\\%1.png").arg(d->frameTimestampNs));
     }
   }
+  // update();
 }
 
 
-void WaveRenderArea::correlate(void)
+void WaveRenderArea::findPeaks(void)
 {
   Q_D(WaveRenderArea);
-  d->peakPos = -1;
-  d->maxCorrAmplitude = 0;
-  d->correlated = QVector<int>(d->sampleBuffer.size(), static_cast<int>(0));
-  QVector<int> transmitted = d->sampleBuffer + QVector<int>(d->pattern.size(), static_cast<int>(0));
-  for (int i = 0; i < d->correlated.size(); ++i) {
-    qlonglong corr = 0;
-    for (int j = 0; j < d->pattern.size(); ++j) {
-      corr += transmitted.at(i + j) * d->pattern.at(j);
-    }
-    if (corr > d->maxCorrAmplitude) {
-      d->maxCorrAmplitude = corr;
-      d->peakPos = i;
-    }
-    d->correlated[i] = corr;
-  }
-  if (d->maxCorrAmplitude > XCorrAmplitudeThreshold) {
-    const qint64 nsPerFrame = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size());
-    const qint64 dt = nsPerFrame * d->peakPos / d->sampleBuffer.size();
+  d->peakPos.clear();
+  bool outsideWindow = true;
+  const qint64 nsPerFrame = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size());
+  qint64 skipLength = d->audioFormat.framesForDuration(d->lockTimeNs / 1000);
+  int i = 0;
+  while (i < d->sampleBuffer.size()) {
+    const int sample = d->sampleBuffer.at(i);
+    const qint64 dt = nsPerFrame * i / d->sampleBuffer.size();
     const qint64 currentTimestamp = d->frameTimestampNs + dt;
     const qint64 nsElapsed = currentTimestamp - d->lastClickTimestampNs;
-    emit click(nsElapsed);
-    d->lastClickTimestampNs = currentTimestamp;
+    if (sample > d->threshold && nsElapsed > d->lockTimeNs) {
+      emit click(nsElapsed);
+      d->lastClickTimestampNs = currentTimestamp;
+      outsideWindow = false;
+      d->peakPos.append(i);
+      i += skipLength;
+    }
+    else {
+      ++i;
+    }
   }
-}
-
-
-void WaveRenderArea::setPattern(const QVector<int> &pattern)
-{
-  Q_D(WaveRenderArea);
-  d->pattern = pattern;
 }
 
 
@@ -190,11 +235,11 @@ void WaveRenderArea::setData(const QVector<int> &data)
 {
   Q_D(WaveRenderArea);
   d->frameTimestampNs = d->timer.nsecsElapsed();
+  d->lastClickTimestampNs = d->frameTimestampNs;
   QMutexLocker(d->sampleBufferMutex);
   d->sampleBuffer = data;
-  correlate();
+  findPeaks();
   drawPixmap();
-  update();
 }
 
 
@@ -211,4 +256,16 @@ void WaveRenderArea::setWritePixmap(bool doWritePixmap)
 {
   Q_D(WaveRenderArea);
   d->doWritePixmap = doWritePixmap;
+}
+
+
+qint64 WaveRenderArea::lockTimeNs(void) const
+{
+  return d_ptr->lockTimeNs;
+}
+
+
+int WaveRenderArea::threshold(void) const
+{
+  return d_ptr->threshold;
 }

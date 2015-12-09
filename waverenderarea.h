@@ -25,6 +25,7 @@
 #include <QByteArray>
 #include <QAudioFormat>
 #include <QResizeEvent>
+#include <QMouseEvent>
 #include <QMutex>
 #include <QPixmap>
 
@@ -36,20 +37,27 @@ class WaveRenderArea : public QWidget
 public:
   WaveRenderArea(QMutex *mutex, QWidget *parent = Q_NULLPTR);
   ~WaveRenderArea();
-  void setPattern(const QVector<int> &);
   void setData(const QVector<int> &);
   void setAudioFormat(const QAudioFormat &format);
   void setWritePixmap(bool);
+
+  qint64 lockTimeNs(void) const;
+  int threshold(void) const;
 
 protected:
   virtual QSize sizeHint(void) const;
   void paintEvent(QPaintEvent *);
   void resizeEvent(QResizeEvent *);
+  void mousePressEvent(QMouseEvent *);
+  void mouseReleaseEvent(QMouseEvent *);
+  void mouseMoveEvent(QMouseEvent *);
 
 signals:
   void click(qint64 nsElapsed);
 
 public slots:
+  void setThreshold(int);
+  void setLockTimeNs(qint64);
 
 private:
   QScopedPointer<WaveRenderAreaPrivate> d_ptr;
@@ -58,7 +66,7 @@ private:
 
 private: // methods
   void drawPixmap(void);
-  void correlate(void);
+  void findPeaks(void);
 };
 
 #endif // __WAVERENDERAREA_H_

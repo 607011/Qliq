@@ -38,6 +38,9 @@ public:
   explicit MainWindow(QWidget *parent = Q_NULLPTR);
   ~MainWindow();
 
+protected:
+  void closeEvent(QCloseEvent *);
+
 private:
   Ui::MainWindow *ui;
   QScopedPointer<MainWindowPrivate> d_ptr;
@@ -49,9 +52,12 @@ private slots:
   void refreshDisplay(void);
   void onVolumeSliderChanged(int);
   void onClick(const qint64 dt);
+  void startStop(void);
 
 private: // methods
   void addBit(int);
+  void restoreSettings(void);
+  void saveSettings(void);
 };
 
 #endif // MAINWINDOW_H

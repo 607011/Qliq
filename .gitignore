@@ -13,3 +13,4 @@ Qliq/qrc_*.cpp
 moc_*.cpp
 *.qm
 *.moc
+random-numbers.bin

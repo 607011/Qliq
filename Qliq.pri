@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-QLIQ_VERSION = 0.0.1
+QLIQ_VERSION = 0.9.0
 
 contains(QT_ARCH, i386) {
     DEFINES += PLATFORM=32
