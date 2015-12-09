@@ -35,7 +35,8 @@ class WaveRenderAreaPrivate
 {
 public:
   explicit WaveRenderAreaPrivate(QMutex *mutex)
-    : maxAmplitude(-1)
+    : doWritePixmap(false)
+    , maxAmplitude(-1)
     , sampleBufferMutex(mutex)
     , peakPos(-1)
     , maxCorrAmplitude(-1)
@@ -203,4 +204,11 @@ void WaveRenderArea::setAudioFormat(const QAudioFormat &format)
   Q_ASSERT(format.channelCount() == 1);
   d->audioFormat = format;
   d->maxAmplitude = AudioInputDevice::maxAmplitudeForFormat(d->audioFormat);
+}
+
+
+void WaveRenderArea::setWritePixmap(bool doWritePixmap)
+{
+  Q_D(WaveRenderArea);
+  d->doWritePixmap = doWritePixmap;
 }

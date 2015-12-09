@@ -39,6 +39,7 @@ public:
   void setPattern(const QVector<int> &);
   void setData(const QVector<int> &);
   void setAudioFormat(const QAudioFormat &format);
+  void setWritePixmap(bool);
 
 protected:
   virtual QSize sizeHint(void) const;
