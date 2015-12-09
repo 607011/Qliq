@@ -47,11 +47,11 @@ public:
     , volumeSlider(new QSlider(Qt::Horizontal))
     , currentByte(0)
     , currentByteIndex(0)
-    , bit(0)
+    , flipBit(false)
     , sampleBufferMutex(new QMutex)
     , lastDeltaT(0)
   {
-    audioFormat.setSampleRate(32000);
+    audioFormat.setSampleRate(44100);
     audioFormat.setChannelCount(1);
     audioFormat.setCodec("audio/pcm");
     audioFormat.setSampleSize(16);
@@ -61,7 +61,7 @@ public:
     volumeSlider->setRange(0, 100);
 
     WavFile wavFile;
-    if (wavFile.open("..\\Qliq\\ClickSound-32kHz-Mono-Signed-LE-16.wav")) {
+    if (wavFile.open("..\\Qliq\\GeigerClick-44,1kHz-Stereo-Signed-LE-16.wav")) {
       QByteArray wav = wavFile.readAll();
       Q_ASSERT(wav.size() % sizeof(qint16) == 0);
       const qint16 *ptr = reinterpret_cast<const qint16*>(wav.data());
@@ -90,7 +90,7 @@ public:
   QByteArray randomBytes;
   quint8 currentByte;
   int currentByteIndex;
-  int bit;
+  bool flipBit;
   QMutex *sampleBufferMutex;
   qint64 lastDeltaT;
   QVector<int> clickSound;
@@ -98,7 +98,7 @@ public:
 };
 
 
-static const int MaxRandomBufferSize = 1;
+static const int MaxRandomBufferSize = 64;
 
 
 MainWindow::MainWindow(QWidget *parent)
@@ -109,9 +109,18 @@ MainWindow::MainWindow(QWidget *parent)
   Q_D(MainWindow);
   ui->setupUi(this);
 
+  qDebug() << d->audioDeviceInfo.supportedCodecs()
+           << d->audioDeviceInfo.supportedSampleRates()
+           << d->audioDeviceInfo.supportedSampleSizes()
+           << d->audioDeviceInfo.supportedSampleTypes()
+           << d->audioDeviceInfo.supportedChannelCounts();
   if (!d->audioDeviceInfo.isFormatSupported(d->audioFormat)) {
     d->audioFormat = d->audioDeviceInfo.nearestFormat(d->audioFormat);
     qWarning() << "Default format not supported - trying to use nearest" << d->audioFormat;
+  }
+  else {
+    qDebug() << d->audioFormat;
+    qDebug() << d->audioDeviceInfo.nearestFormat(d->audioFormat);
   }
 
   d->volumeRenderArea = new VolumeRenderArea;
@@ -189,22 +198,10 @@ void MainWindow::onVolumeSliderChanged(int value)
 }
 
 
-void MainWindow::onClick(const qint64 dt)
-{
-  Q_D(MainWindow);
-  int bit = (dt > d->lastDeltaT) ? d->bit : (d->bit ^ 1);
-  addBit(bit);
-  qDebug() << bit << d->bit << dt << d->lastDeltaT;
-  d->bit ^= 1;
-  d->lastDeltaT = dt;
-}
-
-
 void MainWindow::addBit(int bit)
 {
   Q_D(MainWindow);
-  d->currentByte |= bit;
-  d->currentByte <<= 1;
+  d->currentByte |= bit << d->currentByteIndex;
   ++d->currentByteIndex;
   if (d->currentByteIndex > 7) {
     ui->statusBar->showMessage(QString("random byte: %1 (%2b) %3h")
@@ -221,4 +218,15 @@ void MainWindow::addBit(int bit)
     d->currentByte = 0;
     d->currentByteIndex = 0;
   }
+}
+
+
+void MainWindow::onClick(const qint64 dt)
+{
+  Q_D(MainWindow);
+  int bit = (dt > d->lastDeltaT) ^ d->flipBit ? 0 : 1;
+  addBit(bit);
+  // qDebug() << bit << d->flipBit << dt << d->lastDeltaT;
+  d->flipBit = !d->flipBit;
+  d->lastDeltaT = dt;
 }
