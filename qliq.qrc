@@ -2,5 +2,8 @@
     <qresource prefix="/images">
         <file alias="start.png">resources/images/right-32.png</file>
         <file alias="stop.png">resources/images/stop-32.png</file>
+        <file alias="qliq.ico">resources/images/qliq.ico</file>
+        <file alias="happy.png">resources/images/happy.png</file>
+        <file alias="sad.png">resources/images/sad.png</file>
     </qresource>
 </RCC>

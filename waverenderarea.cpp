@@ -155,50 +155,49 @@ void WaveRenderArea::setLockTimeNs(qint64 lockTimeNs)
 void WaveRenderArea::drawPixmap(void)
 {
   Q_D(WaveRenderArea);
-  if (d->pixmap.isNull())
-    return;
-  Q_ASSERT(d->audioFormat.channelCount() == 1);
-  static const QColor BackgroundColor(17, 33, 17);
-  static const QPen WaveLinePen(QBrush(QColor(54, 255, 54)), 0.5);
-  static const QPen PeakPen(QColor(255, 0, 0));
-  QPainter p(&d->pixmap);
-  p.fillRect(d->pixmap.rect(), BackgroundColor);
-  if (d->audioFormat.isValid() && d->maxAmplitude > 0 && !d->sampleBuffer.isEmpty()) {
-    const int halfHeight = d->pixmap.height() / 2;
-    QPointF origin(0, halfHeight);
-    QLineF waveLine(origin, origin);
-    const qreal xd = qreal(d->pixmap.width()) / d->sampleBuffer.size();
-    if (!d->peakPos.isEmpty()) {
+  if (!d->pixmap.isNull()) {
+    Q_ASSERT(d->audioFormat.channelCount() == 1);
+    QPainter p(&d->pixmap);
+    static const QColor BackgroundColor(17, 33, 17);
+    p.fillRect(d->pixmap.rect(), BackgroundColor);
+    if (d->audioFormat.isValid() && d->maxAmplitude > 0 && !d->sampleBuffer.isEmpty()) {
+      const int halfHeight = d->pixmap.height() / 2;
+      QPointF origin(0, halfHeight);
+      QLineF waveLine(origin, origin);
+      const qreal xd = qreal(d->pixmap.width()) / d->sampleBuffer.size();
+      const qreal skipWidth = xd * d->audioFormat.framesForDuration(d->lockTimeNs / 1000);
+      if (!d->peakPos.isEmpty()) {
+        for (int i = 0; i < d->peakPos.size(); ++i) {
+          const int x = int(d->peakPos.at(i) * xd);
+          static const QBrush SkipBrush(QColor(255, 155, 54).darker());
+          p.fillRect(x, 0, skipWidth, height(), SkipBrush);
+        }
+      }
+      qreal x = 0.0;
+      for (int i = 0; i < d->sampleBuffer.size(); ++i) {
+        p.setRenderHint(QPainter::Antialiasing, true);
+        const qreal y = qreal(d->sampleBuffer.at(i)) / d->maxAmplitude;
+        waveLine.setP2(QPointF(x, halfHeight - y * halfHeight));
+        static const QPen WaveLinePen(QBrush(QColor(54, 255, 54)), 0.5);
+        p.setPen(WaveLinePen);
+        p.drawLine(waveLine);
+        waveLine.setP1(waveLine.p2());
+        x += xd;
+      }
+      static const QBrush ThresholdBrush(QColor(255, 255, 255, 72), Qt::SolidPattern);
       p.setRenderHint(QPainter::Antialiasing, false);
-      p.setPen(PeakPen);
-      for (int i = 0; i < d->peakPos.size(); ++i) {
-        const int x = int(d->peakPos.at(i) * xd);
-        p.drawLine(QLine(x, 0, x, height()));
+      p.fillRect(QRectF(0, 0, width(), halfHeight - qreal(d->threshold) / d->maxAmplitude * halfHeight), ThresholdBrush);
+      if (d->mouseDown) {
+        static const QBrush MarkerBrush(QColor(255, 255, 0, 72), Qt::SolidPattern);
+        p.fillRect(QRectF(d->pos1, 0, (d->pos2 - d->pos1), height()), MarkerBrush);
+      }
+      if (d->doWritePixmap && !d->peakPos.isEmpty()) {
+        p.end();
+        d->pixmap.save(QString("..\\Qliq\\screenshots\\%1.png").arg(d->frameTimestampNs / 1000 / 1000, 12, 10, QChar('0')));
       }
     }
-    qreal x = 0.0;
-    for (int i = 0; i < d->sampleBuffer.size(); ++i) {
-      p.setRenderHint(QPainter::Antialiasing, true);
-      const qreal y = qreal(d->sampleBuffer.at(i)) / d->maxAmplitude;
-      waveLine.setP2(QPointF(x, halfHeight - y * halfHeight));
-      p.setPen(WaveLinePen);
-      p.drawLine(waveLine);
-      waveLine.setP1(waveLine.p2());
-      x += xd;
-    }
-    static const QBrush ThresholdBrush(QColor(255, 255, 255, 72), Qt::SolidPattern);
-    p.setRenderHint(QPainter::Antialiasing, false);
-    p.fillRect(QRectF(0, 0, width(), halfHeight - qreal(d->threshold) / d->maxAmplitude * halfHeight), ThresholdBrush);
-    if (d->mouseDown) {
-      static const QBrush MarkerBrush(QColor(255, 255, 0, 72), Qt::SolidPattern);
-      p.fillRect(QRectF(d->pos1, 0, (d->pos2 - d->pos1), height()), MarkerBrush);
-    }
-    if (d->doWritePixmap && !d->peakPos.isEmpty()) {
-      p.end();
-      d->pixmap.save(QString("..\\Qliq\\screenshots\\%1.png").arg(d->frameTimestampNs / 1000 / 1000, 12, 10, QChar('0')));
-    }
+    update();
   }
-  update();
 }
 
 
@@ -208,7 +207,7 @@ void WaveRenderArea::findPeaks(void)
   d->lastClickTimestampNs = d->frameTimestampNs;
   d->peakPos.clear();
   const qint64 nsPerFrame = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size());
-  const qint64 skipLength = d->audioFormat.framesForDuration(d->lockTimeNs / 1000);
+  // const qint64 skipLength = d->audioFormat.framesForDuration(d->lockTimeNs / 1000);
   int i = 0;
   while (i < d->sampleBuffer.size()) {
     const int sample = d->sampleBuffer.at(i);
@@ -219,11 +218,8 @@ void WaveRenderArea::findPeaks(void)
       emit click(nsElapsed);
       d->lastClickTimestampNs = currentTimestampNs;
       d->peakPos.append(i);
-      i += skipLength;
     }
-    else {
-      i += 1;
-    }
+    ++i;
   }
   d->frameTimestampNs += nsPerFrame;
 }

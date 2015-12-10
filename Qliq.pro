@@ -21,6 +21,12 @@ include(Qliq.pri)
 VERSION = -$${QLIQ_VERSION}
 DEFINES += QLIQ_VERSION=\\\"$${QLIQ_VERSION}\\\"
 
+VERSION_PE_HEADER = 2.0
+
+win32-msvc* {
+  RC_FILE = Qliq.rc
+}
+
 SOURCES += main.cpp\
     mainwindow.cpp \
     global.cpp \
@@ -41,7 +47,9 @@ HEADERS  += mainwindow.h \
 FORMS += mainwindow.ui
 
 DISTFILES += \
-    README.md
+    README.md \
+    Qliq.rc \
+    Qliq.rc
 
 RESOURCES += \
     qliq.qrc

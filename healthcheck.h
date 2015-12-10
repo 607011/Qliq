@@ -24,6 +24,7 @@
 #include <QByteArray>
 
 extern bool testMonobit(const QByteArray &ran, int &notPassedCount, int &testCount);
+extern qreal testEntropy(const QByteArray &ran);
 
 #endif // __HEALTHCHECK_H_
 

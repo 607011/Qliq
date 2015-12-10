@@ -19,6 +19,10 @@
 
 #include "healthcheck.h"
 
+#include <QDebug>
+#include <QVector>
+#include <QtMath>
+
 const int PopCount[256] = {
    0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4,
    1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,
@@ -59,4 +63,28 @@ bool testMonobit(const QByteArray &ran, int &notPassedCount, int &testCount)
   }
   notPassedCount = testCount - passedCount;
   return notPassedCount == 0;
+}
+
+
+qreal testEntropy(const QByteArray &ran)
+{
+  qreal ent = 0.0;
+  static const int Range = 256;
+  const int N = ran.size();
+  if (N > Range) {
+    QVector<int> histo(Range, static_cast<int>(0));
+    for (int i = 0; i < ran.size(); ++i) {
+      ++histo[quint8(ran.at(i))];
+    }
+    for (int i = 0; i < Range; ++i) {
+      qreal p = qreal(histo[i]) / N;
+      if (p > 0.0) {
+        ent += p * M_LOG2E * qLn(1.0 / p);
+      }
+    }
+    for (int i = 0; i < Range; ++i) {
+       qDebug().nospace().noquote() << QString("%1").arg(i, 2, 16, QChar('0')) << ": " << QString("%1").arg(histo[i], 3);
+    }
+  }
+  return ent;
 }

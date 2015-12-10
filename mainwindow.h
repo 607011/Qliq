@@ -23,6 +23,7 @@
 #include <QMainWindow>
 #include <QScopedPointer>
 #include <QByteArray>
+#include <QString>
 #include <QAudio>
 
 namespace Ui {
@@ -62,6 +63,7 @@ private: // methods
   void start(void);
   void stop(void);
   bool healthCheck(const QByteArray &randomBytes);
+  void log(const QString &msg);
 };
 
 #endif // MAINWINDOW_H

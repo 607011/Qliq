@@ -36,6 +36,7 @@
 #include <QFile>
 #include <QSettings>
 #include <QElapsedTimer>
+#include <QDateTime>
 #include <QIcon>
 #include <limits>
 
@@ -61,7 +62,7 @@ public:
     , bps(std::numeric_limits<qreal>::min())
     , byteCounter(0)
   {
-    audioFormat.setSampleRate(44100);
+    audioFormat.setSampleRate(48000);
     audioFormat.setChannelCount(1);
     audioFormat.setCodec("audio/pcm");
     audioFormat.setSampleSize(16);
@@ -115,6 +116,8 @@ MainWindow::MainWindow(QWidget *parent)
 {
   Q_D(MainWindow);
   ui->setupUi(this);
+
+  setWindowIcon(QIcon(":/images/qliq.ico"));
 
   if (!d->audioDeviceInfo.isFormatSupported(d->audioFormat)) {
     d->audioFormat = d->audioDeviceInfo.nearestFormat(d->audioFormat);
@@ -287,14 +290,27 @@ void MainWindow::stop(void)
 }
 
 
+void MainWindow::log(const QString &msg)
+{
+  ui->logPlainTextEdit->appendPlainText(tr("[%1] %2").arg(QDateTime::currentDateTime().toString(Qt::ISODate)).arg(msg));
+}
+
+
 bool MainWindow::healthCheck(const QByteArray &randomBytes)
 {
-  //Q_D(MainWindow);
+  static const QPixmap HappyIcon(":/images/happy.png");
+  static const QPixmap SadIcon(":/images/sad.png");
+  bool healthy = true;
+  bool ok;
+  qreal entropy = testEntropy(randomBytes);
+  log(tr("Entropy: %1").arg(entropy, 0, 'f'));
   int notPassedCount = 0;
   int testCount = 0;
-  bool ok = testMonobit(randomBytes, notPassedCount, testCount);
-  qDebug() << ok << notPassedCount << "failed out of" << testCount;
-  return ok;
+  ok = testMonobit(randomBytes, notPassedCount, testCount);
+  healthy &= ok;
+  log(tr("FIPS 140-2 Monobit test %1.").arg(healthy ? tr("passed") : tr("failed")));
+  ui->healthLabel->setPixmap(healthy ? HappyIcon : SadIcon);
+  return healthy;
 }
 
 
