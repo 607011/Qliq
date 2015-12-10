@@ -27,16 +27,21 @@ SOURCES += main.cpp\
     volumerenderarea.cpp \
     waverenderarea.cpp \
     audioinputdevice.cpp \
-    util.cpp
+    util.cpp \
+    healthcheck.cpp
 
 HEADERS  += mainwindow.h \
     global.h \
     volumerenderarea.h \
     waverenderarea.h \
     audioinputdevice.h \
-    util.h
+    util.h \
+    healthcheck.h
 
 FORMS += mainwindow.ui
 
 DISTFILES += \
     README.md
+
+RESOURCES += \
+    qliq.qrc

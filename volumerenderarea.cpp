@@ -73,6 +73,6 @@ void VolumeRenderArea::setLevel(qreal value)
 {
   Q_D(VolumeRenderArea);
   d->level = value;
-  // update();
+  update();
 }
 

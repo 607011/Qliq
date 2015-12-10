@@ -22,6 +22,7 @@
 
 #include <QMainWindow>
 #include <QScopedPointer>
+#include <QByteArray>
 #include <QAudio>
 
 namespace Ui {
@@ -58,6 +59,9 @@ private: // methods
   void addBit(int);
   void restoreSettings(void);
   void saveSettings(void);
+  void start(void);
+  void stop(void);
+  bool healthCheck(const QByteArray &randomBytes);
 };
 
 #endif // MAINWINDOW_H

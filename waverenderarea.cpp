@@ -28,7 +28,6 @@
 #include <QLineF>
 #include <QMutexLocker>
 #include <QDateTime>
-#include <QElapsedTimer>
 #include <qmath.h>
 #include <limits>
 
@@ -43,18 +42,16 @@ public:
     , mouseDown(false)
     , pos1(0)
     , pos2(0)
-    , lockTimeNs(4000 * 1000)
+    , lockTimeNs(4 * 1000 * 1000)
     , lastClickTimestampNs(0)
     , frameTimestampNs(0)
   {
     Q_ASSERT(mutex != Q_NULLPTR);
-    timer.start();
   }
   ~WaveRenderAreaPrivate() { /* ... */ }
   QAudioFormat audioFormat;
   QPixmap pixmap;
   bool doWritePixmap;
-  QElapsedTimer timer;
   quint32 maxAmplitude;
   QMutex *sampleBufferMutex;
   QVector<int> sampleBuffer;
@@ -75,6 +72,7 @@ WaveRenderArea::WaveRenderArea(QMutex *mutex, QWidget *parent)
 {
   setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::MinimumExpanding);
   setMinimumHeight(56);
+  reset();
 }
 
 
@@ -162,7 +160,7 @@ void WaveRenderArea::drawPixmap(void)
   Q_ASSERT(d->audioFormat.channelCount() == 1);
   static const QColor BackgroundColor(17, 33, 17);
   static const QPen WaveLinePen(QBrush(QColor(54, 255, 54)), 0.5);
-  static const QPen PeakPen(QColor(240, 255, 240).darker());
+  static const QPen PeakPen(QColor(255, 0, 0));
   QPainter p(&d->pixmap);
   p.fillRect(d->pixmap.rect(), BackgroundColor);
   if (d->audioFormat.isValid() && d->maxAmplitude > 0 && !d->sampleBuffer.isEmpty()) {
@@ -197,45 +195,43 @@ void WaveRenderArea::drawPixmap(void)
     }
     if (d->doWritePixmap && !d->peakPos.isEmpty()) {
       p.end();
-      d->pixmap.save(QString("..\\Qliq\\screenshots\\%1.png").arg(d->frameTimestampNs));
+      d->pixmap.save(QString("..\\Qliq\\screenshots\\%1.png").arg(d->frameTimestampNs / 1000 / 1000, 12, 10, QChar('0')));
     }
   }
-  // update();
+  update();
 }
 
 
 void WaveRenderArea::findPeaks(void)
 {
   Q_D(WaveRenderArea);
+  d->lastClickTimestampNs = d->frameTimestampNs;
   d->peakPos.clear();
-  bool outsideWindow = true;
   const qint64 nsPerFrame = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size());
-  qint64 skipLength = d->audioFormat.framesForDuration(d->lockTimeNs / 1000);
+  const qint64 skipLength = d->audioFormat.framesForDuration(d->lockTimeNs / 1000);
   int i = 0;
   while (i < d->sampleBuffer.size()) {
     const int sample = d->sampleBuffer.at(i);
-    const qint64 dt = nsPerFrame * i / d->sampleBuffer.size();
-    const qint64 currentTimestamp = d->frameTimestampNs + dt;
-    const qint64 nsElapsed = currentTimestamp - d->lastClickTimestampNs;
+    const qint64 dtNs = nsPerFrame * i / d->sampleBuffer.size();
+    const qint64 currentTimestampNs = d->frameTimestampNs + dtNs;
+    const qint64 nsElapsed = currentTimestampNs - d->lastClickTimestampNs;
     if (sample > d->threshold && nsElapsed > d->lockTimeNs) {
       emit click(nsElapsed);
-      d->lastClickTimestampNs = currentTimestamp;
-      outsideWindow = false;
+      d->lastClickTimestampNs = currentTimestampNs;
       d->peakPos.append(i);
       i += skipLength;
     }
     else {
-      ++i;
+      i += 1;
     }
   }
+  d->frameTimestampNs += nsPerFrame;
 }
 
 
 void WaveRenderArea::setData(const QVector<int> &data)
 {
   Q_D(WaveRenderArea);
-  d->frameTimestampNs = d->timer.nsecsElapsed();
-  d->lastClickTimestampNs = d->frameTimestampNs;
   QMutexLocker(d->sampleBufferMutex);
   d->sampleBuffer = data;
   findPeaks();
@@ -256,6 +252,14 @@ void WaveRenderArea::setWritePixmap(bool doWritePixmap)
 {
   Q_D(WaveRenderArea);
   d->doWritePixmap = doWritePixmap;
+}
+
+
+void WaveRenderArea::reset(void)
+{
+  Q_D(WaveRenderArea);
+  d->frameTimestampNs = 0;
+  d->lastClickTimestampNs = 0;
 }
 
 

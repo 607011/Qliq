@@ -23,6 +23,7 @@
 #include "waverenderarea.h"
 #include "audioinputdevice.h"
 #include "global.h"
+#include "healthcheck.h"
 
 #include <QDebug>
 #include <QAudioInput>
@@ -35,13 +36,16 @@
 #include <QFile>
 #include <QSettings>
 #include <QElapsedTimer>
+#include <QIcon>
 #include <limits>
 
 
 class MainWindowPrivate {
 public:
   MainWindowPrivate(void)
-    : audioDeviceInfo(QAudioDeviceInfo::defaultInputDevice())
+    : startIcon(":/images/start.png")
+    , stopIcon(":/images/stop.png")
+    , audioDeviceInfo(QAudioDeviceInfo::defaultInputDevice())
     , audio(Q_NULLPTR)
     , audioInput(Q_NULLPTR)
     , volumeRenderArea(Q_NULLPTR)
@@ -52,8 +56,10 @@ public:
     , sampleBufferMutex(new QMutex)
     , lastDeltaT(0)
     , paused(false)
+    , pauseOnNextClick(false)
     , settings(QSettings::IniFormat, QSettings::UserScope, AppCompanyName, AppName)
     , bps(std::numeric_limits<qreal>::min())
+    , byteCounter(0)
   {
     audioFormat.setSampleRate(44100);
     audioFormat.setChannelCount(1);
@@ -64,11 +70,17 @@ public:
 
     randomNumberFile.setFileName("..\\Qliq\\random-numbers.bin");
     randomNumberFile.open(QIODevice::WriteOnly | QIODevice::Append);
+
+    dtFile.setFileName("..\\Qliq\\dt.txt");
+    dtFile.open(QIODevice::WriteOnly | QIODevice::Append);
   }
   ~MainWindowPrivate()
   {
     randomNumberFile.close();
+    dtFile.close();
   }
+  QIcon startIcon;
+  QIcon stopIcon;
   QAudioDeviceInfo audioDeviceInfo;
   QAudioFormat audioFormat;
   QAudioInput *audio;
@@ -82,14 +94,18 @@ public:
   QMutex *sampleBufferMutex;
   qint64 lastDeltaT;
   bool paused;
+  bool pauseOnNextClick;
   QFile randomNumberFile;
+  QFile dtFile;
   QSettings settings;
   QElapsedTimer timer;
   qreal bps;
+  qint64 byteCounter;
+  QElapsedTimer totalTimer;
 };
 
 
-static const int MaxRandomBufferSize = 8;
+static const int MaxRandomBufferSize = 20000 / 8;
 
 
 MainWindow::MainWindow(QWidget *parent)
@@ -133,10 +149,16 @@ MainWindow::MainWindow(QWidget *parent)
 
   ui->statusBar->showMessage(d->audioDeviceInfo.deviceName());
 
+  ui->bufferProgressBar->setRange(0, MaxRandomBufferSize);
+  ui->bufferProgressBar->setValue(0);
+
   restoreSettings();
 
   d->audioInput->start();
   d->audio->start(d->audioInput);
+  if (!d->paused) {
+    start();
+  }
 }
 
 
@@ -162,6 +184,8 @@ void MainWindow::saveSettings(void)
   d->settings.setValue("mainwindow/geometry", saveGeometry());
   d->settings.setValue("analysis/threshold", d->waveRenderArea->threshold());
   d->settings.setValue("analysis/lockTimeNs", d->waveRenderArea->lockTimeNs());
+  d->settings.setValue("mainwindow/paused", d->paused);
+  d->settings.setValue("options/preventBias", ui->preventBiasCheckBox->isChecked());
   d->settings.sync();
 }
 
@@ -169,9 +193,12 @@ void MainWindow::saveSettings(void)
 void MainWindow::restoreSettings(void)
 {
   Q_D(MainWindow);
-  restoreGeometry(d->settings.value("mainwindow/geometry", 32000).toByteArray());
+  restoreGeometry(d->settings.value("mainwindow/geometry").toByteArray());
   d->waveRenderArea->setThreshold(d->settings.value("analysis/threshold", 32000).toInt());
   d->waveRenderArea->setLockTimeNs(d->settings.value("analysis/lockTimeNs", 1600 * 1000).toLongLong());
+  d->paused = d->settings.value("mainwindow/paused", false).toBool();
+  ui->preventBiasCheckBox->setChecked(d->settings.value("options/preventBias", true).toBool());
+  d->pauseOnNextClick = false;
 }
 
 
@@ -200,16 +227,22 @@ void MainWindow::addBit(int bit)
   d->currentByte |= bit << d->currentByteIndex;
   ++d->currentByteIndex;
   if (d->currentByteIndex > 7) {
-    ui->statusBar->showMessage(QString("%1 (0x%2) %3 byte/s")
-                               .arg(uint(d->currentByte), 8, 2, QChar('0'))
-                               .arg(uint(d->currentByte), 2, 16, QChar('0'))
-                               .arg(d->bps, 0, 'f', 1));
+    ui->statusLabel->setText(QString("%1 byte/min overall (%2 byte/s)")
+                             .arg(d->byteCounter * 60 * 1000 / d->totalTimer.elapsed())
+                             .arg(d->bps, 0, 'f', 1));
     d->randomBytes.append(d->currentByte);
+    ui->bitsLcdNumber->display(QString("%1").arg(int(d->currentByte), 8, 2, QChar('0')));
+    ui->byteLcdNumber->display(QString("%1").arg(int(d->currentByte), 2, 16, QChar('0')));
+    ++d->byteCounter;
+    ui->bufferProgressBar->setValue(d->randomBytes.size());
     if (d->randomBytes.size() >= MaxRandomBufferSize) {
       d->bps = 1e9 * MaxRandomBufferSize / d->timer.nsecsElapsed();
       d->timer.restart();
-      d->randomNumberFile.write(d->randomBytes);
-      d->randomNumberFile.flush();
+      bool healthy = healthCheck(d->randomBytes);
+      if (healthy) {
+        d->randomNumberFile.write(d->randomBytes);
+        d->randomNumberFile.flush();
+      }
       d->randomBytes.clear();
     }
     d->currentByte = 0;
@@ -221,17 +254,60 @@ void MainWindow::addBit(int bit)
 void MainWindow::onClick(const qint64 dt)
 {
   Q_D(MainWindow);
-  int bit = (dt > d->lastDeltaT);
-  addBit(bit);
-  // d->flipBit = !d->flipBit;
+  int bit = (dt > d->lastDeltaT) ^ d->flipBit ? 0 : 1;
   d->lastDeltaT = dt;
+  addBit(bit);
+  if (ui->preventBiasCheckBox->isChecked()) {
+    d->flipBit = !d->flipBit;
+  }
+  if (d->pauseOnNextClick) {
+    stop();
+  }
+  d->dtFile.write(QString::number(dt).toLatin1().append("\n"));
+}
+
+
+void MainWindow::start(void)
+{
+  Q_D(MainWindow);
+  d->timer.start();
+  d->totalTimer.start();
+  d->paused = false;
+  d->pauseOnNextClick = false;
+  d->byteCounter = 0;
+  ui->startStopButton->setIcon(d->stopIcon);
+}
+
+
+void MainWindow::stop(void)
+{
+  Q_D(MainWindow);
+  d->paused = true;
+  ui->startStopButton->setIcon(d->startIcon);
+}
+
+
+bool MainWindow::healthCheck(const QByteArray &randomBytes)
+{
+  //Q_D(MainWindow);
+  int notPassedCount = 0;
+  int testCount = 0;
+  bool ok = testMonobit(randomBytes, notPassedCount, testCount);
+  qDebug() << ok << notPassedCount << "failed out of" << testCount;
+  return ok;
 }
 
 
 void MainWindow::startStop(void)
 {
   Q_D(MainWindow);
-  d->paused = !d->paused;
+  if (d->paused) {
+    start();
+  }
+  else {
+    d->pauseOnNextClick = true;
+    d->paused = false;
+  }
 }
 
 

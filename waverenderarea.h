@@ -40,6 +40,7 @@ public:
   void setData(const QVector<int> &);
   void setAudioFormat(const QAudioFormat &format);
   void setWritePixmap(bool);
+  void reset(void);
 
   qint64 lockTimeNs(void) const;
   int threshold(void) const;
