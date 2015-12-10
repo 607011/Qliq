@@ -54,7 +54,7 @@ public:
   bool doWritePixmap;
   quint32 maxAmplitude;
   QMutex *sampleBufferMutex;
-  QVector<int> sampleBuffer;
+  SampleBufferType sampleBuffer;
   int threshold;
   QVector<int> peakPos;
   bool mouseDown;
@@ -208,8 +208,7 @@ void WaveRenderArea::findPeaks(void)
   d->peakPos.clear();
   const qint64 nsPerFrame = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size());
   // const qint64 skipLength = d->audioFormat.framesForDuration(d->lockTimeNs / 1000);
-  int i = 0;
-  while (i < d->sampleBuffer.size()) {
+  for (int i = 0; i < d->sampleBuffer.size(); ++i) {
     const int sample = d->sampleBuffer.at(i);
     const qint64 dtNs = nsPerFrame * i / d->sampleBuffer.size();
     const qint64 currentTimestampNs = d->frameTimestampNs + dtNs;
@@ -219,13 +218,12 @@ void WaveRenderArea::findPeaks(void)
       d->lastClickTimestampNs = currentTimestampNs;
       d->peakPos.append(i);
     }
-    ++i;
   }
   d->frameTimestampNs += nsPerFrame;
 }
 
 
-void WaveRenderArea::setData(const QVector<int> &data)
+void WaveRenderArea::setData(const SampleBufferType &data)
 {
   Q_D(WaveRenderArea);
   QMutexLocker(d->sampleBufferMutex);

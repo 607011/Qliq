@@ -35,9 +35,9 @@ public:
   ~AudioInputDevicePrivate()
   { /* ... */ }
   const QAudioFormat format;
-  quint32 maxAmplitude;
+  int maxAmplitude;
   qreal level;
-  QVector<int> sampleBuffer;
+  SampleBufferType sampleBuffer;
   QMutex *sampleBufferMutex;
   QFile audioFile;
 };
@@ -61,9 +61,9 @@ AudioInputDevice::~AudioInputDevice()
 }
 
 
-quint32 AudioInputDevice::maxAmplitudeForFormat(const QAudioFormat &format)
+int AudioInputDevice::maxAmplitudeForFormat(const QAudioFormat &format)
 {
-  quint32 maxAmplitude;
+  int maxAmplitude;
   switch (format.sampleSize()) {
   case 8:
     switch (format.sampleType()) {
@@ -128,13 +128,13 @@ qreal AudioInputDevice::level(void) const
 }
 
 
-quint32 AudioInputDevice::maxAmplitude(void) const
+int AudioInputDevice::maxAmplitude(void) const
 {
   return d_ptr->maxAmplitude;
 }
 
 
-const QVector<int> &AudioInputDevice::sampleBuffer(void) const
+const SampleBufferType &AudioInputDevice::sampleBuffer(void) const
 {
   return d_ptr->sampleBuffer;
 }
@@ -152,12 +152,6 @@ qint64 AudioInputDevice::writeData(const char *data, qint64 len)
 {
   Q_D(AudioInputDevice);
   d->sampleBufferMutex->lock();
-  const qint16 *const ptr = reinterpret_cast<const qint16*>(data);
-  const int nSamples = int(len / sizeof(qint16));
-  d->sampleBuffer.resize(nSamples);
-  for (int i = 0; i < nSamples; ++i) {
-    d->sampleBuffer[i] = ptr[i];
-  }
   if (d->audioFile.isOpen()) {
     d->audioFile.write(data, len);
   }
@@ -167,17 +161,18 @@ qint64 AudioInputDevice::writeData(const char *data, qint64 len)
     const int channelBytes = d->format.sampleSize() / 8;
     const int sampleBytes = d->format.channelCount() * channelBytes;
     Q_ASSERT(len % sampleBytes == 0);
-    const int numSamples = len / sampleBytes;
-    quint32 maxValue = 0;
+    const int nSamples = len / sampleBytes;
+    d->sampleBuffer.resize(nSamples);
+    int maxValue = 0;
     const uchar *ptr = reinterpret_cast<const uchar *>(data);
-    for (int i = 0; i < numSamples; ++i) {
+    for (int i = 0; i < nSamples; ++i) {
       for (int j = 0; j < d->format.channelCount(); ++j) {
-        quint32 value = 0;
+        int value = 0;
         if (d->format.sampleSize() == 8 && d->format.sampleType() == QAudioFormat::UnSignedInt) {
           value = *reinterpret_cast<const quint8*>(ptr);
         }
         else if (d->format.sampleSize() == 8 && d->format.sampleType() == QAudioFormat::SignedInt) {
-          value = qAbs(*reinterpret_cast<const qint8*>(ptr));
+          value = *reinterpret_cast<const qint8*>(ptr);
         }
         else if (d->format.sampleSize() == 16 && d->format.sampleType() == QAudioFormat::UnSignedInt) {
           if (d->format.byteOrder() == QAudioFormat::LittleEndian) {
@@ -189,10 +184,10 @@ qint64 AudioInputDevice::writeData(const char *data, qint64 len)
         }
         else if (d->format.sampleSize() == 16 && d->format.sampleType() == QAudioFormat::SignedInt) {
           if (d->format.byteOrder() == QAudioFormat::LittleEndian) {
-            value = qAbs(qFromLittleEndian<qint16>(ptr));
+            value = qFromLittleEndian<qint16>(ptr);
           }
           else {
-            value = qAbs(qFromBigEndian<qint16>(ptr));
+            value = qFromBigEndian<qint16>(ptr);
           }
         }
         else if (d->format.sampleSize() == 32 && d->format.sampleType() == QAudioFormat::UnSignedInt) {
@@ -205,17 +200,18 @@ qint64 AudioInputDevice::writeData(const char *data, qint64 len)
         }
         else if (d->format.sampleSize() == 32 && d->format.sampleType() == QAudioFormat::SignedInt) {
           if (d->format.byteOrder() == QAudioFormat::LittleEndian) {
-            value = qAbs(qFromLittleEndian<qint32>(ptr));
+            value = qFromLittleEndian<qint32>(ptr);
           }
           else {
-            value = qAbs(qFromBigEndian<qint32>(ptr));
+            value = qFromBigEndian<qint32>(ptr);
           }
         }
         else if (d->format.sampleSize() == 32 && d->format.sampleType() == QAudioFormat::Float) {
-          value = qAbs(*reinterpret_cast<const float*>(ptr) * 0x7fffffff); // assumes 0-1.0
+          value = *reinterpret_cast<const float*>(ptr) * 0x7fffffff; // assumes 0-1.0
         }
-        maxValue = qMax(value, maxValue);
+        maxValue = qMax(qAbs(value), maxValue);
         ptr += channelBytes;
+        d->sampleBuffer[i] = value;
       }
     }
     maxValue = qMin(maxValue, d->maxAmplitude);

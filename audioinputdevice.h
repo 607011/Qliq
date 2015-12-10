@@ -26,8 +26,10 @@
 #include <QAudioFormat>
 #include <QScopedPointer>
 #include <QMutex>
+#include "global.h"
 
 class AudioInputDevicePrivate;
+
 
 class AudioInputDevice : public QIODevice
 {
@@ -41,13 +43,13 @@ public:
   void stop(void);
 
   qreal level(void) const;
-  quint32 maxAmplitude(void) const;
-  const QVector<int> &sampleBuffer(void) const;
+  int maxAmplitude(void) const;
+  const SampleBufferType &sampleBuffer(void) const;
 
   qint64 readData(char *data, qint64 maxlen);
   qint64 writeData(const char *data, qint64 len);
 
-  static quint32 maxAmplitudeForFormat(const QAudioFormat &format);
+  static int maxAmplitudeForFormat(const QAudioFormat &format);
 
 private:
   QScopedPointer<AudioInputDevicePrivate> d_ptr;

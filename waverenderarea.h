@@ -28,6 +28,7 @@
 #include <QMouseEvent>
 #include <QMutex>
 #include <QPixmap>
+#include "global.h"
 
 class WaveRenderAreaPrivate;
 
@@ -37,7 +38,7 @@ class WaveRenderArea : public QWidget
 public:
   WaveRenderArea(QMutex *mutex, QWidget *parent = Q_NULLPTR);
   ~WaveRenderArea();
-  void setData(const QVector<int> &);
+  void setData(const SampleBufferType &);
   void setAudioFormat(const QAudioFormat &format);
   void setWritePixmap(bool);
   void reset(void);

@@ -21,6 +21,7 @@
 #define __GLOBAL_H_
 
 #include <QString>
+#include <QVector>
 
 extern const QString AppCompanyName;
 extern const QString AppCompanyDomain;
@@ -33,5 +34,8 @@ extern const QString AppUserAgent;
 
 extern void checkPortable(void);
 extern bool isPortable(void);
+
+
+typedef QVector<int> SampleBufferType;
 
 #endif // __GLOBAL_H_

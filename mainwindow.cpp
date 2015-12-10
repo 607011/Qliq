@@ -62,12 +62,17 @@ public:
     , bps(std::numeric_limits<qreal>::min())
     , byteCounter(0)
   {
+#ifndef CUSTOM_AUDIO_FORMAT
     audioFormat.setSampleRate(48000);
     audioFormat.setChannelCount(1);
     audioFormat.setCodec("audio/pcm");
     audioFormat.setSampleSize(16);
     audioFormat.setByteOrder(QAudioFormat::LittleEndian);
     audioFormat.setSampleType(QAudioFormat::SignedInt);
+#else
+    audioFormat = audioDeviceInfo.preferredFormat();
+#endif
+    qDebug() << audioFormat;
 
     randomNumberFile.setFileName("..\\Qliq\\random-numbers.bin");
     randomNumberFile.open(QIODevice::WriteOnly | QIODevice::Append);
@@ -118,11 +123,6 @@ MainWindow::MainWindow(QWidget *parent)
   ui->setupUi(this);
 
   setWindowIcon(QIcon(":/images/qliq.ico"));
-
-  if (!d->audioDeviceInfo.isFormatSupported(d->audioFormat)) {
-    d->audioFormat = d->audioDeviceInfo.nearestFormat(d->audioFormat);
-    qWarning() << "Default format not supported - trying to use nearest" << d->audioFormat;
-  }
 
   d->volumeRenderArea = new VolumeRenderArea;
 
