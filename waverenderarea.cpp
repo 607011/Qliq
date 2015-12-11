@@ -57,6 +57,7 @@ public:
   SampleBufferType sampleBuffer;
   int threshold;
   QVector<int> peakPos;
+  QVector<qint64> dt;
   bool mouseDown;
   int pos1;
   int pos2;
@@ -204,22 +205,24 @@ void WaveRenderArea::drawPixmap(void)
 void WaveRenderArea::findPeaks(void)
 {
   Q_D(WaveRenderArea);
-  d->lastClickTimestampNs = d->frameTimestampNs;
   d->peakPos.clear();
-  const qint64 nsPerFrame = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size());
+  d->dt.clear();
+  const qint64 nsPerBuffer = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size());
   // const qint64 skipLength = d->audioFormat.framesForDuration(d->lockTimeNs / 1000);
   for (int i = 0; i < d->sampleBuffer.size(); ++i) {
     const int sample = d->sampleBuffer.at(i);
-    const qint64 dtNs = nsPerFrame * i / d->sampleBuffer.size();
+    const qint64 dtNs = i * nsPerBuffer / d->sampleBuffer.size();
     const qint64 currentTimestampNs = d->frameTimestampNs + dtNs;
     const qint64 nsElapsed = currentTimestampNs - d->lastClickTimestampNs;
     if (sample > d->threshold && nsElapsed > d->lockTimeNs) {
       emit click(nsElapsed);
       d->lastClickTimestampNs = currentTimestampNs;
       d->peakPos.append(i);
+      d->dt.append(nsElapsed);
     }
   }
-  d->frameTimestampNs += nsPerFrame;
+  // qDebug() << d->frameTimestampNs << nsPerBuffer << d->lockTimeNs << d->dt;
+  d->frameTimestampNs += nsPerBuffer;
 }
 
 
