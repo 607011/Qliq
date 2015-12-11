@@ -82,9 +82,9 @@ qreal testEntropy(const QByteArray &ran)
         ent += p * M_LOG2E * qLn(1.0 / p);
       }
     }
-    for (int i = 0; i < Range; ++i) {
-       qDebug().nospace().noquote() << QString("%1").arg(i, 2, 16, QChar('0')) << ": " << QString("%1").arg(histo[i], 3);
-    }
+//    for (int i = 0; i < Range; ++i) {
+//       qDebug().nospace().noquote() << QString("%1").arg(i, 2, 16, QChar('0')) << ": " << QString("%1").arg(histo[i], 3);
+//    }
   }
   return ent;
 }
