@@ -62,15 +62,16 @@ public:
     , bps(std::numeric_limits<qreal>::min())
     , byteCounter(0)
   {
-#ifndef CUSTOM_AUDIO_FORMAT
-    audioFormat.setSampleRate(48000);
+// #define USE_PREFERRED_AUDIO_FORMAT
+#ifdef USE_PREFERRED_AUDIO_FORMAT
+    audioFormat = audioDeviceInfo.preferredFormat();
+#else
+    audioFormat.setSampleRate(11025);
     audioFormat.setChannelCount(1);
     audioFormat.setCodec("audio/pcm");
     audioFormat.setSampleSize(16);
     audioFormat.setByteOrder(QAudioFormat::LittleEndian);
     audioFormat.setSampleType(QAudioFormat::SignedInt);
-#else
-    audioFormat = audioDeviceInfo.preferredFormat();
 #endif
     qDebug() << audioFormat;
 
