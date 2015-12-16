@@ -38,7 +38,7 @@ class WaveRenderArea : public QWidget
 public:
   WaveRenderArea(QMutex *mutex, QWidget *parent = Q_NULLPTR);
   ~WaveRenderArea();
-  void setData(const SampleBufferType &);
+  void setData(const SampleBufferType &, qint64 processedUSecs);
   void setAudioFormat(const QAudioFormat &format);
   void setWritePixmap(bool);
   void reset(void);

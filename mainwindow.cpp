@@ -55,12 +55,12 @@ public:
     , currentByteIndex(0)
     , flipBit(false)
     , sampleBufferMutex(new QMutex)
-    , lastDeltaT(0)
     , paused(false)
     , pauseOnNextClick(false)
     , settings(QSettings::IniFormat, QSettings::UserScope, AppCompanyName, AppName)
     , bps(std::numeric_limits<qreal>::min())
     , byteCounter(0)
+    , dtIndex(0)
   {
 // #define USE_PREFERRED_AUDIO_FORMAT
 #ifdef USE_PREFERRED_AUDIO_FORMAT
@@ -76,10 +76,10 @@ public:
     qDebug() << audioFormat;
 
     randomNumberFile.setFileName("..\\Qliq\\random-numbers.bin");
-    randomNumberFile.open(QIODevice::WriteOnly | QIODevice::Append);
+    randomNumberFile.open(QIODevice::WriteOnly | QIODevice::Truncate);
 
     dtFile.setFileName("..\\Qliq\\dt.txt");
-    dtFile.open(QIODevice::WriteOnly | QIODevice::Append);
+    dtFile.open(QIODevice::WriteOnly | QIODevice::Truncate);
   }
   ~MainWindowPrivate()
   {
@@ -99,7 +99,6 @@ public:
   int currentByteIndex;
   bool flipBit;
   QMutex *sampleBufferMutex;
-  qint64 lastDeltaT;
   bool paused;
   bool pauseOnNextClick;
   QFile randomNumberFile;
@@ -109,6 +108,8 @@ public:
   qreal bps;
   qint64 byteCounter;
   QElapsedTimer totalTimer;
+  qint64 dtPair[2];
+  int dtIndex;
 };
 
 
@@ -211,7 +212,7 @@ void MainWindow::refreshDisplay(void)
   Q_D(MainWindow);
   if (!d->paused) {
     d->volumeRenderArea->setLevel(d->audioInput->level());
-    d->waveRenderArea->setData(d->audioInput->sampleBuffer());
+    d->waveRenderArea->setData(d->audioInput->sampleBuffer(), d->audio->processedUSecs());
   }
 }
 
@@ -258,11 +259,14 @@ void MainWindow::addBit(int bit)
 void MainWindow::onClick(const qint64 dt)
 {
   Q_D(MainWindow);
-  int bit = (dt > d->lastDeltaT) ^ d->flipBit ? 0 : 1;
-  d->lastDeltaT = dt;
-  addBit(bit);
-  if (ui->preventBiasCheckBox->isChecked()) {
-    d->flipBit = !d->flipBit;
+  d->dtPair[d->dtIndex++] = dt;
+  if (d->dtIndex > 1) {
+    d->dtIndex = 0;
+    int bit = (d->dtPair[1] > d->dtPair[0]) ^ d->flipBit ? 0 : 1;
+    addBit(bit);
+    if (ui->preventBiasCheckBox->isChecked()) {
+      d->flipBit = !d->flipBit;
+    }
   }
   if (d->pauseOnNextClick) {
     stop();

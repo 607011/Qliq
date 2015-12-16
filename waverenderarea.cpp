@@ -45,6 +45,7 @@ public:
     , lockTimeNs(4 * 1000 * 1000)
     , lastClickTimestampNs(0)
     , frameTimestampNs(0)
+    , lastFrameTimestampNs(0)
   {
     Q_ASSERT(mutex != Q_NULLPTR);
   }
@@ -64,6 +65,7 @@ public:
   qint64 lockTimeNs;
   qint64 lastClickTimestampNs;
   qint64 frameTimestampNs;
+  qint64 lastFrameTimestampNs;
 };
 
 
@@ -211,27 +213,28 @@ void WaveRenderArea::findPeaks(void)
   // const qint64 skipLength = d->audioFormat.framesForDuration(d->lockTimeNs / 1000);
   for (int i = 0; i < d->sampleBuffer.size(); ++i) {
     const int sample = d->sampleBuffer.at(i);
-    const qint64 dtNs = i * nsPerBuffer / d->sampleBuffer.size();
-    const qint64 currentTimestampNs = d->frameTimestampNs + dtNs;
-    const qint64 nsElapsed = currentTimestampNs - d->lastClickTimestampNs;
-    if (sample > d->threshold && nsElapsed > d->lockTimeNs) {
-      emit click(nsElapsed);
+    const qint64 sampleOffsetNs = i * nsPerBuffer / d->sampleBuffer.size();
+    const qint64 currentTimestampNs = d->frameTimestampNs + sampleOffsetNs;
+    const qint64 dtNs = currentTimestampNs - d->lastClickTimestampNs;
+    if (sample > d->threshold && dtNs > d->lockTimeNs) {
+      emit click(dtNs);
       d->lastClickTimestampNs = currentTimestampNs;
       d->peakPos.append(i);
-      d->dt.append(nsElapsed);
+      d->dt.append(dtNs);
     }
   }
-  // qDebug() << d->frameTimestampNs << nsPerBuffer << d->lockTimeNs << d->dt;
-  d->frameTimestampNs += nsPerBuffer;
+  // qDebug() << d->frameTimestampNs / 1000 / 1000 << d->dt;
 }
 
 
-void WaveRenderArea::setData(const SampleBufferType &data)
+void WaveRenderArea::setData(const SampleBufferType &data, qint64 processedUSecs)
 {
   Q_D(WaveRenderArea);
   QMutexLocker(d->sampleBufferMutex);
   d->sampleBuffer = data;
+  d->frameTimestampNs = 1000 * processedUSecs;
   findPeaks();
+  d->lastFrameTimestampNs = d->frameTimestampNs;
   drawPixmap();
 }
 
