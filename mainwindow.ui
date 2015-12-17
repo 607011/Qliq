@@ -15,6 +15,51 @@
   </property>
   <widget class="QWidget" name="centralWidget">
    <layout class="QGridLayout" name="gridLayout">
+    <item row="2" column="0">
+     <layout class="QHBoxLayout" name="horizontalLayout_2">
+      <property name="topMargin">
+       <number>0</number>
+      </property>
+      <item>
+       <widget class="QProgressBar" name="bufferProgressBar">
+        <property name="toolTip">
+         <string>buffer fill level</string>
+        </property>
+        <property name="value">
+         <number>24</number>
+        </property>
+        <property name="textVisible">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="healthLabel">
+        <property name="minimumSize">
+         <size>
+          <width>16</width>
+          <height>16</height>
+         </size>
+        </property>
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item row="0" column="0">
+     <layout class="QVBoxLayout" name="graphLayout"/>
+    </item>
+    <item row="3" column="0">
+     <widget class="QPlainTextEdit" name="logPlainTextEdit">
+      <property name="font">
+       <font>
+        <family>Consolas</family>
+       </font>
+      </property>
+     </widget>
+    </item>
     <item row="1" column="0">
      <layout class="QHBoxLayout" name="horizontalLayout">
       <property name="topMargin">
@@ -164,18 +209,6 @@
       </item>
      </layout>
     </item>
-    <item row="3" column="0">
-     <widget class="QPlainTextEdit" name="logPlainTextEdit">
-      <property name="font">
-       <font>
-        <family>Consolas</family>
-       </font>
-      </property>
-     </widget>
-    </item>
-    <item row="0" column="0">
-     <layout class="QVBoxLayout" name="graphLayout"/>
-    </item>
     <item row="0" column="1" rowspan="4">
      <layout class="QVBoxLayout" name="verticalLayout">
       <item>
@@ -212,38 +245,12 @@
       </item>
      </layout>
     </item>
-    <item row="2" column="0">
-     <layout class="QHBoxLayout" name="horizontalLayout_2">
-      <property name="topMargin">
-       <number>0</number>
+    <item row="4" column="0">
+     <widget class="QCheckBox" name="onlySaveHealthyDataCheckBox">
+      <property name="text">
+       <string>only save healthy data</string>
       </property>
-      <item>
-       <widget class="QProgressBar" name="bufferProgressBar">
-        <property name="toolTip">
-         <string>buffer fill level</string>
-        </property>
-        <property name="value">
-         <number>24</number>
-        </property>
-        <property name="textVisible">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="healthLabel">
-        <property name="minimumSize">
-         <size>
-          <width>16</width>
-          <height>16</height>
-         </size>
-        </property>
-        <property name="text">
-         <string/>
-        </property>
-       </widget>
-      </item>
-     </layout>
+     </widget>
     </item>
    </layout>
   </widget>

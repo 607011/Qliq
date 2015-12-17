@@ -244,7 +244,7 @@ void MainWindow::addBit(int bit)
       d->bps = 1e9 * MaxRandomBufferSize / d->timer.nsecsElapsed();
       d->timer.restart();
       bool healthy = healthCheck(d->randomBytes);
-      if (healthy) {
+      if (healthy || !ui->onlySaveHealthyDataCheckBox->isChecked()) {
         d->randomNumberFile.write(d->randomBytes);
         d->randomNumberFile.flush();
       }
@@ -259,8 +259,8 @@ void MainWindow::addBit(int bit)
 void MainWindow::onClick(const qint64 dt)
 {
   Q_D(MainWindow);
-  d->dtPair[d->dtIndex++] = dt;
-  if (d->dtIndex > 1) {
+  d->dtPair[d->dtIndex] = dt;
+  if (++d->dtIndex > 1) {
     d->dtIndex = 0;
     int bit = (d->dtPair[1] > d->dtPair[0]) ^ d->flipBit ? 0 : 1;
     addBit(bit);
