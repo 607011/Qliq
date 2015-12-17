@@ -210,8 +210,9 @@ void WaveRenderArea::findPeaks(void)
   d->peakPos.clear();
   d->dt.clear();
   const qint64 nsPerBuffer = 1000 * d->audioFormat.durationForFrames(d->sampleBuffer.size());
-  // const qint64 skipLength = d->audioFormat.framesForDuration(d->lockTimeNs / 1000);
-  for (int i = 0; i < d->sampleBuffer.size(); ++i) {
+  const qint64 skipLength = d->audioFormat.framesForDuration(d->lockTimeNs / 1000);
+  int i = 0;
+  while (i < d->sampleBuffer.size()) {
     const int sample = d->sampleBuffer.at(i);
     const qint64 sampleOffsetNs = i * nsPerBuffer / d->sampleBuffer.size();
     const qint64 currentTimestampNs = d->frameTimestampNs + sampleOffsetNs;
@@ -221,9 +222,12 @@ void WaveRenderArea::findPeaks(void)
       d->lastClickTimestampNs = currentTimestampNs;
       d->peakPos.append(i);
       d->dt.append(dtNs);
+      i += skipLength;
+    }
+    else {
+      ++i;
     }
   }
-  // qDebug() << d->frameTimestampNs / 1000 / 1000 << d->dt;
 }
 
 
